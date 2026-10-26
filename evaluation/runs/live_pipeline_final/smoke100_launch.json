@@ -1,0 +1,15 @@
+{
+  "run_id": "20261026T214842Z-gpu-beb510",
+  "source_commit": "b684a53",
+  "instance_id": "i-0b24eed3230cc7531",
+  "instance_type": "g5.2xlarge",
+  "availability_zone": "eu-north-1b",
+  "spot_usd_per_hour_at_launch": 0.288,
+  "max_wall_minutes": 45,
+  "mission_sim_seconds": 100,
+  "status_at_recording": "instance_launched; application_startup_and_results_pending",
+  "payload_uri": "s3://ariadne-836505524290-eun1/runs/live-payload-20261026T214231Z/payload.tar.gz",
+  "results_prefix": "s3://ariadne-836505524290-eun1/runs/20261026T214842Z-gpu-beb510/output/",
+  "replay": "explicitly_skipped",
+  "notes": "g4dn.2xlarge rejected for insufficient capacity in all three zones; unchanged binaries reused on g5.2xlarge. An empty-command local attempt was cancelled before instance launch."
+}

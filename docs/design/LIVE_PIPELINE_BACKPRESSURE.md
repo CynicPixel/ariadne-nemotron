@@ -127,3 +127,20 @@ The larger host should relieve CPU contention, but no speedup is claimed before
 measurement. Since bridge changes and host size both change, the next smoke is an
 integration test, not an isolated hardware speedup benchmark. Keep resolved source,
 config, host type, startup costs and stage timings in the evidence manifest.
+
+### Verification launch checkpoint
+
+Commit `ec1e614` contains callback isolation/sender changes and research; `b684a53`
+adds the feedback audit (four synthetic tests passed) and capacity retry controls.
+The ROS bridge build passed; queue/scheduling changes passed 102 unit and 21
+focused tests. The audit reproduces zero translation and 24.901 s command age in
+the earlier 30-s smoke and distinguishes absent GT evidence from zero motion.
+
+All three Stockholm AZs rejected `g4dn.2xlarge` with InsufficientInstanceCapacity.
+The same binary payload was therefore launched on `g5.2xlarge` (8 vCPU, A10G) in
+1b: run `20261026T214842Z-gpu-beb510`, instance `i-0b24eed3230cc7531`.
+This is a 100-s free-running mission with a 45-minute automatic shutdown limit.
+Instance launch is confirmed; application startup and live results are pending.
+The exact launch metadata is in `evaluation/runs/live_pipeline_final/smoke100_launch.json`.
+The hardware change further prevents attributing any improvement solely to the
+callback changes; first establish an operating live feedback loop.
