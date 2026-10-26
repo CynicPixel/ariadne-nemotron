@@ -9,9 +9,11 @@ git diff --quiet HEAD -- cpp configs infra ros2 python/reconstruction tests || {
 export LIVE_AWS_PROFILE=gpu LIVE_AWS_MAX_MIN=45 ARIADNE_ROOT_GB=240
 # Approved Stockholm G/VT Spot quota: 8 vCPUs (AWS support, 2026-10-27).
 export LIVE_AWS_INSTANCE_TYPE="${LIVE_AWS_INSTANCE_TYPE:-g4dn.2xlarge}"
-export SPINUP_AVOID_AZ=eu-north-1c
+export SPINUP_AVOID_AZ="${SPINUP_AVOID_AZ:-eu-north-1c}"
 export ARIADNE_RUNNER_JSON="$ROOT/build/live_payload/runner.json"
-unset ARIADNE_LOCKSTEP ARIADNE_RECON_ITERS ARIADNE_LIVE_PAYLOAD_URI
+unset ARIADNE_LOCKSTEP ARIADNE_RECON_ITERS
+# An explicit payload URI may be reused after a capacity-only launch failure.
+# The caller must ensure it contains this checkout's unchanged build artifacts.
 export ARIADNE_LIVE_CONFIG=configs/mission/live_demo_final_profile_1500.yaml
 export ARIADNE_PERCEPTION_CONFIG=configs/perception/sim_v1_rad_flat.yaml
 export ARIADNE_SLAM_CONFIG=configs/slam/sim_v2_loops.yaml
