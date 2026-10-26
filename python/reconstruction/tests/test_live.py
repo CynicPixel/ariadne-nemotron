@@ -344,3 +344,17 @@ def test_paced_replay_waits_for_each_keyframe_mission_time(tmp_path, monkeypatch
                          "--training-image", "rgb", "--pace", "1e-9"]) == 0   # 1 ns of mission = 1 s of wall
     assert len(waits) == 3 and max(waits) <= 11.0 and min(waits) > 0     # one wait per later keyframe, none longer
     assert json.loads((tmp_path / "o" / "manifest.json").read_text())["pace"] == 1e-9
+
+
+def test_live_iteration_prediction_is_capped_and_handles_bad_timings():
+    from types import SimpleNamespace
+    from ariadne_recon.live.trainer import LiveTrainer, TrainParams
+    trainer = LiveTrainer.__new__(LiveTrainer)
+    trainer.p = TrainParams(budget_ms=50)
+    assert trainer._iterations(SimpleNamespace(ms_iter=[])) == 3
+    assert trainer._iterations(SimpleNamespace(ms_iter=[10.0])) == 5
+    assert trainer._iterations(SimpleNamespace(ms_iter=[0.00001])) == 64
+    for value in (0.0, -1.0, float("nan")):
+        assert trainer._iterations(SimpleNamespace(ms_iter=[value])) == 3
+    trainer.p = TrainParams(iters=100)
+    assert trainer._iterations(SimpleNamespace(ms_iter=[10.0])) == 100

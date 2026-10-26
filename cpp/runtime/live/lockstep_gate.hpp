@@ -27,6 +27,18 @@ inline bool AllReached(const Lanes& lanes, int64_t T) {
     return any;
 }
 
+/// Demo scheduling advances with any healthy agent. Done lanes cannot repeatedly
+/// trigger horizons after their final frame. Evidence mode still uses AllReached.
+template <typename Lanes>
+inline bool AnyReached(const Lanes& lanes, int64_t T) {
+    for (const auto& l : lanes) if (l.progress >= T) return true;
+    return false;
+}
+
+/// Collaborative maps belong to the mission thread. The central demo integrator
+/// must not consume their keyframes into the unrelated central planner.
+inline bool IntegrateAtDecision(bool demo, bool collaborative) { return !demo || collaborative; }
+
 /// Every lane finished BEFORE T: the mission ended early, nothing more will arrive.
 template <typename Lanes>
 inline bool AllDoneShort(const Lanes& lanes, int64_t T) {

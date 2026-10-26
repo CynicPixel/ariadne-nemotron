@@ -491,3 +491,19 @@ TEST(MultiAgentPlanning, NAgentStepsOnNThreadsEqualTheSerialRun) {
     EXPECT_EQ(Count(serial, " broker"), 3u);
     EXPECT_EQ(Count(serial, "blocks=0 "), 0u) << "every agent's map changed at every barrier";
 }
+
+TEST(Multiagent, AllocationIdentitySurvivesGeometricSolveRevisions) {
+    ComponentInfo c; c.broker = 0; c.members = {0, 1};
+    c.epoch = CoordinationToken(c.broker, c.members);
+    TaskConsensus a; a.broker = 0; a.members = {0, 1}; a.epoch = c.epoch;
+    for (uint64_t graph_epoch : {1u, 2u, 17u, 900u}) {
+        (void)graph_epoch;  // geometric revisions are deliberately not allocation identity
+        EXPECT_EQ(CoordinationToken(0, {1, 0}), c.epoch);
+        EXPECT_TRUE(MatchesComponent(a, c));
+    }
+    c.broker = 1; EXPECT_FALSE(MatchesComponent(a, c));
+    c.broker = 0; c.members = {0}; EXPECT_FALSE(MatchesComponent(a, c));
+    // Even a token collision cannot authorize a consensus for other members.
+    c.members = {0, 2}; EXPECT_FALSE(MatchesComponent(a, c));
+    EXPECT_NE(CoordinationToken(0, {0, 1}), CoordinationToken(0, {0, 2}));
+}

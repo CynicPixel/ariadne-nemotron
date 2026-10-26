@@ -418,7 +418,7 @@ core::SE3 GetSe3(const uint8_t*& q) {
 }
 
 int RunEstimatorWorker(const std::string& scene, int agent, const std::string& socket_path,
-                       const std::string& collab_socket, bool lens_on, tools::StereoVoArgs va, const std::string& out,
+                       const std::string& collab_socket, bool lens_on, bool latest_stereo, tools::StereoVoArgs va, const std::string& out,
                        int argc, char** argv) {
     // D228: 5 OpenCV threads per worker. The estimator is thread-count-invariant (A2: 16/5/2 bit-identical) and a
     // 3-worker fleet at the default pool thrashes the box (cpu PSI 26 % -> 1.2 % at 5 on c7i.4xlarge, job 46).
@@ -443,17 +443,28 @@ int RunEstimatorWorker(const std::string& scene, int agent, const std::string& s
     const char* lp = std::getenv("ARIADNE_LANE_PIPELINE");
     const bool pipelined = lp && std::string(lp) == "1";
     live::LiveSimSource src(scene, agent, images, imus, gt, turn, "live", lens_on, pipelined);
+    images.ConfigureSensor(512ULL * 1024 * 1024,
+                           latest_stereo ? src.left_topic() : "", latest_stereo ? src.right_topic() : "");
+    imus.ConfigureSensor(64ULL * 1024 * 1024);
+    Lines ingest_log(fs::path(out) / ("sensor_ingest_agent" + std::to_string(agent) + ".jsonl"));
+    if (latest_stereo) images.Observe([&](const char* kind, int64_t stamp) {
+        ingest_log.Put("{\"stage\":\"worker\",\"event\":\"" + std::string(kind) +
+                       "\",\"stamp_ns\":" + std::to_string(stamp) + "}");
+    });
+    std::exception_ptr sensor_error;
     std::mutex send_mu;
     auto send = [&](const char* topic, const std::vector<uint8_t>& b) {
         std::lock_guard<std::mutex> lk(send_mu);
         if (!live::WriteFrame(fd, topic, b.data(), b.size())) std::_Exit(3);   // parent gone: nothing left to save
     };
     std::thread reader([&] {
+        try {
         live::LinkFrame f;
         while (live::ReadFrame(fd, f)) {
             if (f.topic == src.left_topic() || f.topic == src.right_topic()) {
                 live::StreamMessage m;
                 m.topic = f.topic;
+                m.stamp_ns = live::PeekStamp("sensor_msgs/msg/Image", f.payload);
                 m.data = std::make_shared<const std::vector<uint8_t>>(std::move(f.payload));
                 images.Push(std::move(m));
             } else if (f.topic == src.imu_topic()) {
@@ -471,6 +482,8 @@ int RunEstimatorWorker(const std::string& scene, int agent, const std::string& s
                 gt.Add(tp);
             }
         }
+        }
+        catch (...) { sensor_error = std::current_exception(); }
         images.Close();
         imus.Close();
     });
@@ -534,7 +547,15 @@ int RunEstimatorWorker(const std::string& scene, int agent, const std::string& s
     PutPod(o, uint64_t(src.unpaired()));
     send("#done", o);
     ::shutdown(fd, SHUT_RDWR);
+    images.Close(); imus.Close();
     reader.join();
+    if (sensor_error) {
+        try { std::rethrow_exception(sensor_error); }
+        catch (const std::exception& e) { std::fprintf(stderr, "sensor reader: %s\n", e.what()); }
+        rc = 1;
+    }
+    std::fprintf(stderr, "sensor queues agent=%d dropped_pairs=%zu dropped_incomplete=%zu late_images=%zu image_peak_bytes=%zu imu_peak_bytes=%zu\n",
+                 agent, images.dropped_pairs(), images.dropped_incomplete(), images.late_images(), images.max_bytes(), imus.max_bytes());
     ::close(fd);
     return rc;
 }
@@ -631,6 +652,7 @@ int main(int argc, char** argv) {
         std::string scene, mission_cfg_path, live_cfg_path, out, link_path, replay_path, chooser_socket, decisions_path,
             directives_path, planner_cfg_path, shadow_cfg_path, worker_socket, collab_socket;
         int worker_agent = -1;
+        std::string ingest_arg = "lossless";
         std::string lens_arg = "off";   // D227: the D41 lens is off unless the parent (LiveConfig.lens) says on
         tools::StereoVoArgs va;
         for (int i = 1; i < argc; ++i) {
@@ -655,14 +677,16 @@ int main(int argc, char** argv) {
             else if (k == "--estimator-worker") worker_agent = std::stoi(v);   // D168: internal, spawned by the parent
             else if (k == "--worker-socket") worker_socket = v;
             else if (k == "--collab-socket") collab_socket = v;   // D174: this agent's ariadne_collab_worker
+            else if (k == "--ingest-policy") ingest_arg = v;
             else if (k == "--lens") lens_arg = v;                 // worker mode (D227): on|off, from LiveConfig.lens
             else throw std::invalid_argument("unknown argument " + k);
         }
         if (lens_arg != "on" && lens_arg != "off") throw std::invalid_argument("--lens on|off");
+        if (ingest_arg != "lossless" && ingest_arg != "latest_stereo") throw std::invalid_argument("--ingest-policy lossless|latest_stereo");
         if (worker_agent >= 0) {
             if (scene.empty() || va.perception_config.empty() || va.slam_config.empty() || out.empty() || worker_socket.empty())
                 throw std::invalid_argument("worker mode: --scene --perception-config --slam-config --out --worker-socket");
-            return RunEstimatorWorker(scene, worker_agent, worker_socket, collab_socket, lens_arg == "on", va, out,
+            return RunEstimatorWorker(scene, worker_agent, worker_socket, collab_socket, lens_arg == "on", ingest_arg == "latest_stereo", va, out,
                                       argc, argv);
         }
         if (scene.empty() || mission_cfg_path.empty() || live_cfg_path.empty() || out.empty() ||
@@ -837,6 +861,34 @@ int main(int argc, char** argv) {
             mover_state(run_dir / "mover_state.jsonl"), telemetry(run_dir / "telemetry.jsonl"),
             link_log(run_dir / "link.jsonl"), lockstep_log(run_dir / "lockstep.jsonl"),
             timing_log(run_dir / "timing.jsonl");
+        // Runtime-resolved values supplement config hashes: a copied YAML alone
+        // does not show defaults, overrides, or which integration owner is active.
+        {
+            YAML::Node stack;
+            stack["schema"] = 1;
+            stack["execution"] = is_live ? "live" : "replay";
+            stack["demo"] = lc.demo;
+            stack["lockstep"] = lc.lockstep;
+            stack["agents"] = NA;
+            stack["sensor_policy"] = (is_live && lc.demo && !lc.lockstep) ? "latest_stereo" : "lossless";
+            stack["mapping_owner"] = ma ? "per_agent_mission" : (lc.demo ? "central_background" : "central_mission");
+            stack["collaboration_enabled"] = bool(ma && lc.collab.enabled);
+            stack["allocation_identity"] = "broker_and_members_v1";
+            stack["chooser"] = lc.chooser;
+            stack["energy_source"] = "estimated_odometry";
+            stack["target_mode"] = "known_briefing_coordinate";
+            stack["mission_completion_scored"] = false;
+            stack["required_evidence"] = "runtime activity and mission outcome checks remain separate from configuration";
+            stack["perception"] = YAML::LoadFile(va.perception_config);
+            stack["slam"] = YAML::LoadFile(va.slam_config);
+            stack["live"] = YAML::LoadFile(live_cfg_path);
+            if (!planner_cfg_path.empty()) {
+                stack["planner"] = YAML::LoadFile(planner_cfg_path);
+                if (!stack["planner"]["nbv"]["cost_time"]) stack["planner"]["nbv"]["cost_time"] = "none";
+                if (!stack["planner"]["nbv"]["view_yaw"]) stack["planner"]["nbv"]["view_yaw"] = "target";
+            }
+            std::ofstream(run_dir / "stack_manifest.yaml") << stack;
+        }
         const auto wall_start = std::chrono::steady_clock::now();
         // D224 (A2's profiling ask): ARIADNE_PROFILE=1 writes profile.jsonl - one line per lockstep barrier, a
         // wall-clock decomposition of the barrier's stages. Default off; it only ADDS a file, never changes timing-
@@ -875,6 +927,23 @@ int main(int argc, char** argv) {
         if (int(cmd_topic.size()) != NA) throw std::runtime_error("live: mission_live.json agents and command topics disagree");
 
         std::deque<AgentLane> lanes(static_cast<size_t>(NA));
+        const bool latest_stereo = is_live && lc.demo && !lc.lockstep;
+        Lines ingest_log(run_dir / "sensor_ingest.jsonl");
+        for (const auto& a : mj["agents"]) {
+            const int k = a["agent"].as<int>();
+            const std::string left = latest_stereo ? a["topics"]["left_image"].as<std::string>() : "";
+            const std::string right = latest_stereo ? a["topics"]["right_image"].as<std::string>() : "";
+            lanes[k].images.ConfigureSensor(512ULL * 1024 * 1024, left, right);
+            lanes[k].imus.ConfigureSensor(64ULL * 1024 * 1024);
+            lanes[k].worker_inputs.ConfigureSensor(512ULL * 1024 * 1024, left, right);
+            if (latest_stereo) {
+                auto observer = [&, k](const char* kind, int64_t stamp) {
+                    ingest_log.Put("{\"stage\":\"parent\",\"agent\":" + std::to_string(k) +
+                        ",\"event\":\"" + std::string(kind) + "\",\"stamp_ns\":" + std::to_string(stamp) + "}");
+                };
+                (lc.estimator_processes ? lanes[k].worker_inputs : lanes[k].images).Observe(observer);
+            }
+        }
         // The mover's answers (D153b): (agent, command stamp) -> accepted. Part of the recorded input, so the wait for
         // them below is deterministic in replay.
         std::map<std::pair<int, int64_t>, bool> answers;
@@ -1041,6 +1110,7 @@ int main(int argc, char** argv) {
                     }
                     ro.Flush(Dispatch);
                 } catch (const std::exception& e) {
+                    replay_reader_error = std::current_exception();
                     std::fprintf(stderr, "ariadne_live: link reader: %s\n", e.what());
                 }
                 reorder_timeouts = ro.released_on_timeout();
@@ -1295,7 +1365,8 @@ int main(int argc, char** argv) {
                                                     "--seed", sa.c_str(),
                                                     "--estimator-worker", ka.c_str(),
                                                     "--worker-socket", wsock.c_str(),
-                                                    "--lens", lensa.c_str()};
+                                                    "--lens", lensa.c_str(),
+                                                    "--ingest-policy", latest_stereo ? "latest_stereo" : "lossless"};
                     if (!va.imu_noise_config.empty()) cas.insert(cas.end(), {"--imu-noise-config", va.imu_noise_config.c_str()});
                     if (!csock.empty()) cas.insert(cas.end(), {"--collab-socket", csock.c_str()});
                     cas.push_back(nullptr);
@@ -1426,7 +1497,7 @@ int main(int argc, char** argv) {
         std::mutex planner_mu;
         std::atomic<bool> integ_stop{false};
         std::thread integrator;
-        if (lc.demo) {
+        if (lc.demo && !ma) {
             integrator = std::thread([&] {
                 while (!integ_stop) {
                     std::vector<KfRec> batch;
@@ -1456,6 +1527,8 @@ int main(int argc, char** argv) {
         }
         std::string demo_prev_did;                                 // D169: the horizon whose answer we poll next
         std::vector<std::vector<std::pair<double, double>>> demo_prev_goals(static_cast<size_t>(NA));   // its candidate goals
+        int64_t watchdog_progress = -1;
+        auto watchdog_wall = std::chrono::steady_clock::now();
         int64_t paced_to = substep_ns;   // the last run_to target issued (the reader sent it at #ready)
         // A mission-loop failure must be LOUD and must not unwind past the joinable lane threads (collab60d:
         // a replay arrival-wait runtime_error reached main, the std::thread members' dtors called terminate
@@ -1469,8 +1542,19 @@ int main(int argc, char** argv) {
                 std::unique_lock<std::mutex> lk(progress_mu);
                 // EVERY lane (D225: these checks were hardcoded to lanes 0 and 1 after the D213 N-lift - the
                 // ma200 replay divergence; the predicates live in lockstep_gate.hpp under a unit test now).
-                for (;;) {   // D166: pace gz toward T sub-step by sub-step, gated on every lane's consumption
-                    if (live::AllReached(lanes, T)) break;
+                for (;;) {   // evidence mode paces every lane; demo advances on fresh available state
+                    if (latest_stereo) {
+                        int64_t newest = -1;
+                        for (const auto& lane : lanes) newest = std::max(newest, lane.progress);
+                        if (newest > watchdog_progress) {
+                            watchdog_progress = newest;
+                            watchdog_wall = std::chrono::steady_clock::now();
+                        } else if (std::chrono::steady_clock::now() - watchdog_wall > std::chrono::seconds(120)) {
+                            throw std::runtime_error("demo watchdog: no estimator progress for 120 wall seconds");
+                        }
+                    }
+                    if ((latest_stereo ? live::AnyReached(lanes, T) : live::AllReached(lanes, T)) ||
+                        live::AllDoneShort(lanes, T)) break;
                     if (is_live && lc.lockstep && paced_to < T && !input_done) {
                         if (live::MinProgress(lanes) >= paced_to - grace_ns) {
                             const int64_t next = std::min(paced_to + substep_ns, T);
@@ -1483,10 +1567,15 @@ int main(int argc, char** argv) {
                     }
                     progress_cv.wait_for(lk, std::chrono::milliseconds(200));
                 }
+                if (latest_stereo) {
+                    int64_t newest = T;
+                    for (const auto& lane : lanes) newest = std::max(newest, lane.progress);
+                    T = std::min(end_ns, std::max(T, (newest / replan_ns) * replan_ns));
+                }
                 if (live::AllDoneShort(lanes, T)) break;   // every estimator ended before T: the mission is over
                 // The previous decision's outcome is an input to this one: wait for EVERY agent's answer to the commands sent
                 // at T - replan (live: bounded wait, a timeout is counted; replay: they are in the recording).
-                if (T > replan_ns) {
+                if (T > replan_ns && !latest_stereo) {
                     const auto have = [&] {
                         if (input_done) return true;
                         for (int k = 0; k < NA; ++k) if (!answers.count({k, T - replan_ns})) return false;
@@ -1505,7 +1594,7 @@ int main(int argc, char** argv) {
             }
             const auto barrier_wall = std::chrono::steady_clock::now();
             pmark(0);
-            if (!lc.demo) {   // gate mode: keyframes stamped before T, merged across agents in (t, agent, id) order
+            if (live::IntegrateAtDecision(lc.demo, bool(ma))) {   // per-agent maps are owned by this mission thread; demo must feed them too
                 std::vector<KfRec> batch;
                 for (auto& L : lanes) {
                     std::lock_guard<std::mutex> lk(L.mu);
@@ -1574,6 +1663,7 @@ int main(int argc, char** argv) {
                 std::lock_guard<std::mutex> lk(lanes[size_t(k)].mu);
                 for (auto it = lanes[k].cams.rbegin(); it != lanes[k].cams.rend(); ++it) {
                     if (it->first < T) {
+                        if (latest_stereo && T - it->first > replan_ns) break;
                         const core::SE3 Tw = brief.T_W_O[size_t(k)] * it->second;
                         ctx.active[k] = true;
                         ctx.at[k] = brief.ToCell(Tw.t.x(), Tw.t.y());
@@ -1583,7 +1673,14 @@ int main(int argc, char** argv) {
                     }
                 }
             }
-            for (int k = 0; k < NA; ++k) ctx.flown_m[size_t(k)] = lanes[size_t(k)].gt.PathLength(T);
+            for (int k = 0; k < NA; ++k) {
+                std::lock_guard<std::mutex> lk(lanes[size_t(k)].mu);
+                const auto& poses = lanes[size_t(k)].cams;
+                double travelled = 0;
+                for (size_t j = 1; j < poses.size() && poses[j].first < T; ++j)
+                    travelled += (poses[j].second.t - poses[j - 1].second.t).norm();
+                ctx.flown_m[size_t(k)] = travelled;
+            }
             live::PlanOutput plan_out;
             std::vector<multi::Pick> ma_picks;
             if (ma) {
@@ -1611,6 +1708,14 @@ int main(int argc, char** argv) {
                     self_only.broker = ac::AgentId(nk);
                     self_only.members = {ac::AgentId(nk)};
                     return self_only;
+                };
+                const auto allocation_component = [&](int nk) {
+                    const auto comp = ma_comp(nk);
+                    multi::ComponentInfo info;
+                    info.broker = int32_t(comp.broker);
+                    for (auto member : comp.members) if (int(member) < NA) info.members.push_back(int32_t(member));
+                    info.epoch = multi::CoordinationToken(info.broker, info.members);
+                    return info;
                 };
                 const auto ma_hb = [&](int nk, int nj) -> std::optional<core::HeartbeatValue> {
                     if (!csnap) return ma_node(nk).LastHeartbeat(ac::AgentId(nj));
@@ -1719,10 +1824,7 @@ int main(int argc, char** argv) {
                 for (int k = 0; k < NA; ++k) {
                     const auto comp = ma_comp(k);
                     if (int(comp.broker) != k) continue;
-                    multi::ComponentInfo ci;
-                    ci.broker = k;
-                    ci.epoch = uint32_t(comp.epoch.counter);
-                    for (auto m : comp.members) if (int(m) < NA) ci.members.push_back(int(m));
+                    const multi::ComponentInfo ci = allocation_component(k);
                     std::vector<multi::TaskBid> bids;
                     bids.reserve(ma->bids_rx[size_t(k)].size());
                     for (const auto& [snd, bb] : ma->bids_rx[size_t(k)]) bids.push_back(bb);
@@ -1753,7 +1855,9 @@ int main(int argc, char** argv) {
                     workers.reserve(size_t(NA));
                     for (int k = 0; k < NA; ++k) workers.emplace_back([&, k] {
                         const auto comp = ma_comp(k);
-                        const uint32_t epoch = uint32_t(comp.epoch.counter);
+                        const auto component = allocation_component(k);
+                        const uint32_t epoch = component.epoch;
+                        const uint32_t map_epoch = uint32_t(comp.epoch.counter);
                         std::vector<planning::PeerKeyframe> peers;
                         for (int j = 0; j < NA; ++j) {
                             if (j == k) continue;
@@ -1773,7 +1877,7 @@ int main(int argc, char** argv) {
                         for (int j = 0; j <= NA; ++j) {
                             if (j == k) continue;
                             auto patch = ma->exporters[size_t(k)].Export(
-                                ma_acked(k, j), epoch, T);
+                                ma_acked(k, j), map_epoch, T);
                             if (!patch.blocks.empty())
                                 patches_out[size_t(k)].push_back({j, live::ToWire(patch, core::FrameTag{ac::AgentId(k), 0})});
                         }
@@ -1782,6 +1886,12 @@ int main(int argc, char** argv) {
                         // (6, in-thread) the pick from the newest consensus RECEIVED by T - reads only this agent's state
                         const multi::TaskConsensus* c = ma->cons_rx[size_t(k)] ? &*ma->cons_rx[size_t(k)] : nullptr;
                         const auto& opts = lp.agents[size_t(k)].nbv.options;
+                        if (c && !multi::MatchesComponent(*c, component)) {
+                            ma_picks[size_t(k)].option = opts.empty() ? -1 : 0;
+                            ma_picks[size_t(k)].coordinated = false;
+                            ma_picks[size_t(k)].why = "uncoordinated: component changed";
+                            return;
+                        }
                         ma_picks[size_t(k)] = ma->discounted
                             ? multi::ApplyConsensusDiscounted(c, k, epoch, T, ma->timeout_s, opts, ma->broker.r_same,
                                                               ma->broker.range_m, ma->tau_s)
@@ -1830,7 +1940,8 @@ int main(int argc, char** argv) {
                     const auto comp = ma_comp(k);
                     mt << (k ? "," : "") << "{\"pick\":" << ma_picks[size_t(k)].option << ",\"why\":\""
                        << JsonEscape(ma_picks[size_t(k)].why) << "\",\"broker\":" << int(comp.broker)
-                       << ",\"members\":" << comp.members.size() << ",\"epoch\":" << comp.epoch.counter << "}";
+                       << ",\"members\":" << comp.members.size() << ",\"epoch\":" << comp.epoch.counter
+                       << ",\"allocation_token\":" << allocation_component(k).epoch << "}";
                 }
                 const auto charged = [&](core::MessageClass cls) {
                     return csnap ? csnap->Bytes(cls) : ma->comms->ledger().TotalForClass(cls);
@@ -2242,7 +2353,18 @@ int main(int argc, char** argv) {
             std::vector<char> sent_at_T(static_cast<size_t>(NA), false);
             for (int k = 0; k < NA; ++k) {
                 Pending& pd = P[k];
-                if (!pd.active) continue;
+                if (!pd.active) {
+                    if (latest_stereo) {
+                        runtime::ros_cdr::PoseArray hold;
+                        hold.header.stamp.sec = int32_t(T / 1000000000);
+                        hold.header.stamp.nanosec = uint32_t(T % 1000000000);
+                        hold.header.frame_id = "world";
+                        SendCommand(k, hold);
+                        commands.Put("{\"agent\":" + std::to_string(k) + ",\"stamp_ns\":" +
+                                     std::to_string(T) + ",\"poses\":0,\"reason\":\"stale_or_uninitialized_pose\"}");
+                    }
+                    continue;
+                }
                 const int pick = picks[k];
                 std::ostringstream o;
                 o.precision(10);
@@ -2419,6 +2541,9 @@ int main(int argc, char** argv) {
             if (worker_pid[k] > 0) {
                 int st = 0;
                 ::waitpid(worker_pid[k], &st, 0);
+                if ((!WIFEXITED(st) || WEXITSTATUS(st) != 0) && !mission_err)
+                    mission_err = std::make_exception_ptr(std::runtime_error("estimator worker " +
+                        std::to_string(k) + " failed (wait status " + std::to_string(st) + ")"));
             }
         }
         if (ma && ma->collab) {   // D174: the estimator tees are closed; the fleet drains, then the workers exit

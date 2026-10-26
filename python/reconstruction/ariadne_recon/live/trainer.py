@@ -41,6 +41,7 @@ class TrainParams:
     iters: int = 0                # > 0: fixed iterations per keyframe (batch path; Gaussian-SLAM TUM: 100)
     iters_first: int = 0          # > 0: a submap's first keyframe (Gaussian-SLAM TUM: 100); 0 = iters
     budget_ms: float = 0.0        # > 0: live, iterations from the measured ms/iteration
+    max_live_iters: int = 64      # hard work cap even when timing history is unusually small
     min_iters: int = 3
     new_kf_fraction: float = 0.4  # Gaussian-SLAM: >= 40 % of the iterations on the new keyframe
     lambda_dssim: float = 0.2     # Gaussian-SLAM eq. 10 (= Kerbl 2023)
@@ -220,16 +221,26 @@ class LiveTrainer:
         n_iter = self._iterations(st, opened)
         n_new = max(1, round(self.p.new_kf_fraction * n_iter))
         losses, terms, pruned = [], None, 0
+        opt_start = time.perf_counter()
+        planned_iters = n_iter
         for i in range(n_iter):
             loss, terms = self._step(st, kf if i < n_new else int(self.rng.choice(sm.keyframes)))
             losses.append(loss)
             if i == n_iter // 2 or i == n_iter - 1:   # Gaussian-SLAM: prune at the middle and the end
                 pruned += st.prune(self.p.prune_opacity)
+            if (self.p.iters == 0 and self.p.budget_ms > 0 and i + 1 >= self.p.min_iters
+                    and (time.perf_counter() - opt_start) * 1000 >= self.p.budget_ms):
+                if i != planned_iters // 2 and i != planned_iters - 1:
+                    pruned += st.prune(self.p.prune_opacity)
+                break
+        n_iter = len(losses)
+        optimization_ms = 1000 * (time.perf_counter() - opt_start)
         newly_stable = self._lifecycle(st, kf)
         psnr_after = self._psnr(st, kf) if self.p.diagnostics else None
         torch.cuda.synchronize()
         rec = {"agent": agent, "kf": kf, "sid": sm.sid, "opened": opened, "seeded": len(s.means), "gaussians": len(st),
-               "iters": n_iter, "loss_first": losses[0] if losses else None, "loss_last": losses[-1] if losses else None,
+               "iters": n_iter, "planned_iters": planned_iters, "optimization_ms": optimization_ms,
+               "budget_ms": self.p.budget_ms, "loss_first": losses[0] if losses else None, "loss_last": losses[-1] if losses else None,
                "terms_last": terms, "psnr_train_init": psnr_init, "psnr_train_after": psnr_after,
                "frozen_bitwise": st.frozen_ok if self.p.diagnostics else None,
                "stable": int(st.stable.sum()), "newly_stable": newly_stable, "pruned": pruned, "steps": st.steps,
@@ -256,7 +267,10 @@ class LiveTrainer:
         if self.p.budget_ms > 0:
             if not st.ms_iter:
                 return self.p.min_iters
-            return max(self.p.min_iters, int(self.p.budget_ms / float(np.median(st.ms_iter[-50:]))))
+            median = float(np.median(st.ms_iter[-50:]))
+            if not np.isfinite(median) or median <= 0:
+                return self.p.min_iters
+            return min(self.p.max_live_iters, max(self.p.min_iters, int(self.p.budget_ms / median)))
         raise ValueError("TrainParams: set iters (batch) or budget_ms (live)")
 
     def _exposure(self, st: _SubmapState, kf: int):

@@ -13,6 +13,24 @@
 
 namespace ariadne::planning::multi {
 
+uint32_t CoordinationToken(int32_t broker, std::vector<int32_t> members) {
+    std::sort(members.begin(), members.end());
+    members.erase(std::unique(members.begin(), members.end()), members.end());
+    uint32_t h = 2166136261u;
+    const auto mix = [&](uint32_t value) {
+        for (int b = 0; b < 4; ++b) { h ^= (value >> (8 * b)) & 255u; h *= 16777619u; }
+    };
+    mix(uint32_t(broker)); mix(uint32_t(members.size()));
+    for (int32_t member : members) mix(uint32_t(member));
+    return h;
+}
+
+bool MatchesComponent(const TaskConsensus& consensus, const ComponentInfo& component) {
+    auto actual = consensus.members, expected = component.members;
+    std::sort(actual.begin(), actual.end()); std::sort(expected.begin(), expected.end());
+    return consensus.broker == component.broker && actual == expected && consensus.epoch == component.epoch;
+}
+
 cv::Mat EncodeCells(const TraversabilityMaps& m) {
     cv::Mat out(m.slab.size(), CV_8U);
     for (int r = 0; r < m.slab.rows; ++r) {   // row pointers: one pass, no per-pixel lookups

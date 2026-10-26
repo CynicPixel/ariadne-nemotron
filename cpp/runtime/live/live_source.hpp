@@ -23,6 +23,7 @@
 //                     floating-point reductions. Turn-taking removes the contention whatever the cause.
 // ---------------------------------------------------------------------------
 #include "core/determinism/digests.hpp"
+#include "runtime/live/message_queue.hpp"
 #include "runtime/datasets/stereo_source.hpp"
 
 #include <mcap/writer.hpp>
@@ -44,13 +45,6 @@
 #include <vector>
 
 namespace ariadne::runtime::live {
-
-struct StreamMessage {
-    std::string topic, type;
-    int64_t stamp_ns = -1;   // header stamp; -1 = untimed (no header: std_msgs/String)
-    std::shared_ptr<const std::vector<uint8_t>> data;
-    uint64_t seq = 0;        // release order (1-based), = log time in the recording
-};
 
 /// The header stamp of a CDR message that starts with std_msgs/Header (Image, CameraInfo, Imu, PoseStamped):
 /// bytes 4..12 after the encapsulation header. -1 for untimed types.
@@ -78,53 +72,6 @@ inline int64_t PeekStamp(const std::string& type, const std::vector<uint8_t>& b)
     std::memcpy(&nsec, b.data() + 8, 4);
     return int64_t(sec) * 1000000000 + nsec;
 }
-
-class MessageQueue {
-public:
-    /// capacity 0 = unbounded. Bounded: Push blocks while full (backpressure; order is unchanged, only pacing). The
-    /// replay reader outruns the estimators (~0.85 s per keyframe), and an unbounded queue held a whole recording's
-    /// decoded RGB: a 45 s replay was OOM-killed at 7.4 GB RSS (2026-10-23).
-    explicit MessageQueue(size_t capacity = 0) : cap_(capacity) {}
-    void Push(StreamMessage m) {
-        {
-            std::unique_lock<std::mutex> lk(mu_);
-            if (cap_) space_.wait(lk, [&] { return q_.size() < cap_ || closed_; });
-            q_.push_back(std::move(m));
-            max_depth_ = std::max(max_depth_, q_.size());
-        }
-        cv_.notify_one();
-    }
-    /// Blocks; nullopt once closed and drained.
-    std::optional<StreamMessage> Pop() {
-        std::unique_lock<std::mutex> lk(mu_);
-        cv_.wait(lk, [&] { return !q_.empty() || closed_; });
-        if (q_.empty()) return std::nullopt;
-        StreamMessage m = std::move(q_.front());
-        q_.pop_front();
-        lk.unlock();
-        space_.notify_one();
-        return m;
-    }
-    void Close() {
-        {
-            std::lock_guard<std::mutex> lk(mu_);
-            closed_ = true;
-        }
-        cv_.notify_all();
-        space_.notify_all();
-    }
-    size_t max_depth() const {
-        std::lock_guard<std::mutex> lk(mu_);
-        return max_depth_;
-    }
-
-private:
-    size_t cap_ = 0, max_depth_ = 0;
-    mutable std::mutex mu_;
-    std::condition_variable cv_, space_;
-    std::deque<StreamMessage> q_;
-    bool closed_ = false;
-};
 
 class Reorderer {
 public:

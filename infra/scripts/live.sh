@@ -191,7 +191,12 @@ cmd_run() {
     local recon_gpu=() recon_train=()
     if [ "$recon_backend" = gpu ]; then
       recon_gpu=(--gpus all)
-      recon_train=(--iters "${ARIADNE_RECON_ITERS:-100}" --diagnostics)
+      if [ -n "${ARIADNE_RECON_ITERS:-}" ]; then
+        recon_train=(--iters "$ARIADNE_RECON_ITERS")
+      else
+        recon_train=(--budget-ms "${ARIADNE_RECON_BUDGET_MS:-50}")
+      fi
+      [ "${ARIADNE_RECON_DIAGNOSTICS:-0}" != 1 ] || recon_train+=(--diagnostics)
     elif [ "$recon_backend" != cpu_init ]; then
       log "unsupported reconstruction backend: $recon_backend"; exit 2
     fi
