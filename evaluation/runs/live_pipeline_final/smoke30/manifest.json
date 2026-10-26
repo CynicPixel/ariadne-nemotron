@@ -1,0 +1,67 @@
+{
+  "tool": "ariadne_recon.live.service",
+  "spool": null,
+  "listen": "/work/build/live/runs/live-20261026T170515Z-226a/recon.sock",
+  "link": {
+    "frames": {
+      "#t_w_o": 2,
+      "#kf": 36
+    },
+    "dropped": {}
+  },
+  "spool_run_id": [],
+  "spool_schema": [],
+  "backend": "gpu",
+  "splat_backend": "gsplat_cuda",
+  "training_image": "rgb",
+  "iters": 0,
+  "budget_ms": 50.0,
+  "diagnostics": false,
+  "pace": 0.0,
+  "keyframes": 36,
+  "wall_s": 212.9,
+  "placement": {
+    "mode": "live: #t_w_o (briefing until then)",
+    "scene": "/work/build/live/scenes/maze_short_6",
+    "world": "mission W",
+    "T_W_O": {
+      "0": [
+        0.0,
+        0.0,
+        1.0,
+        -1.87,
+        -1.0,
+        0.0,
+        0.0,
+        3.05,
+        0.0,
+        -1.0,
+        0.0,
+        1.02,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "1": [
+        0.0,
+        0.0,
+        1.0,
+        -1.87,
+        -1.0,
+        0.0,
+        0.0,
+        15.05,
+        0.0,
+        -1.0,
+        0.0,
+        1.02,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "unplaced": {}
+  }
+}

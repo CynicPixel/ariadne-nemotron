@@ -5,8 +5,10 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
 END_S="${1:-30}"
 [[ "$END_S" =~ ^[1-9][0-9]*$ ]] && (( END_S <= 200 )) || { echo 'smoke horizon must be 1..200 simulated seconds' >&2; exit 2; }
-git diff --quiet HEAD -- cpp configs infra python/reconstruction tests || { echo 'commit code/config changes before launching' >&2; exit 2; }
+git diff --quiet HEAD -- cpp configs infra ros2 python/reconstruction tests || { echo 'commit code/config changes before launching' >&2; exit 2; }
 export LIVE_AWS_PROFILE=gpu LIVE_AWS_MAX_MIN=45 ARIADNE_ROOT_GB=240
+# Approved Stockholm G/VT Spot quota: 8 vCPUs (AWS support, 2026-10-27).
+export LIVE_AWS_INSTANCE_TYPE="${LIVE_AWS_INSTANCE_TYPE:-g4dn.2xlarge}"
 export SPINUP_AVOID_AZ=eu-north-1c
 export ARIADNE_RUNNER_JSON="$ROOT/build/live_payload/runner.json"
 unset ARIADNE_LOCKSTEP ARIADNE_RECON_ITERS ARIADNE_LIVE_PAYLOAD_URI

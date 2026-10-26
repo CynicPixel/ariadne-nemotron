@@ -1527,6 +1527,7 @@ int main(int argc, char** argv) {
         }
         std::string demo_prev_did;                                 // D169: the horizon whose answer we poll next
         std::vector<std::vector<std::pair<double, double>>> demo_prev_goals(static_cast<size_t>(NA));   // its candidate goals
+        int64_t radio_tick_ns = 0;
         int64_t watchdog_progress = -1;
         auto watchdog_wall = std::chrono::steady_clock::now();
         int64_t paced_to = substep_ns;   // the last run_to target issued (the reader sent it at #ready)
@@ -1741,11 +1742,11 @@ int main(int argc, char** argv) {
                 // the mailboxes via the coordination hook.
                 {
                     const int64_t tick_dt = 500000000;   // = MembershipParams.period_s
-                    for (int64_t tt = T - replan_ns + tick_dt; tt <= T; tt += tick_dt) {
+                    live::AdvanceRadioTicks(radio_tick_ns, T, tick_dt, [&](int64_t tt) {
                         const core::Timestamp t_now{tt};
                         if (ma->collab) {   // D174: the fleet owns delivery, releases and ticks (lockstep watermark)
                             ma->collab->Step(t_now);
-                            continue;
+                            return;
                         }
                         // The network is a discrete-event queue: arrived datagrams must be ROUTED to their
                         // destination node before the tick (pass B's loop does exactly this; without it nothing
@@ -1753,7 +1754,7 @@ int main(int argc, char** argv) {
                         for (const auto& d : ma->comms->network().DeliverUntil(t_now))
                             if (int(d.to) <= NA) ma->nodes[size_t(d.to)]->OnDatagram(d, t_now);
                         for (auto& nd : ma->nodes) nd->Tick(t_now, ma->comms->network());
-                    }
+                    });
                     if (ma->collab) csnap = ma->collab->Snapshot(T);   // D179b: the barrier's one atomic view
                     if (ma->collab) {   // D174 §4 feedback + the panel, at the barrier
                         // (csnap was taken right after the ladder: the same atomic value serves the whole barrier)

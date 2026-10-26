@@ -67,6 +67,24 @@ public:
     std::optional<StreamMessage> Pop() {
         std::unique_lock<std::mutex> lk(mu_);
         cv_.wait(lk, [&] { return !q_.empty() || partner_ || Complete() != pairs_.end() || closed_; });
+        return PopReady(lk);
+    }
+    std::optional<StreamMessage> TryPop() {
+        std::unique_lock<std::mutex> lk(mu_);
+        if (q_.empty() && !partner_ && Complete() == pairs_.end() && !closed_) return std::nullopt;
+        return PopReady(lk);
+    }
+    void Close() {
+        { std::lock_guard<std::mutex> lk(mu_); closed_ = true; }
+        cv_.notify_all(); space_.notify_all();
+    }
+    size_t max_depth() const { std::lock_guard<std::mutex> lk(mu_); return max_depth_; }
+    size_t max_bytes() const { std::lock_guard<std::mutex> lk(mu_); return max_bytes_; }
+    size_t dropped_pairs() const { std::lock_guard<std::mutex> lk(mu_); return dropped_pairs_; }
+    size_t dropped_incomplete() const { std::lock_guard<std::mutex> lk(mu_); return dropped_incomplete_; }
+    size_t late_images() const { std::lock_guard<std::mutex> lk(mu_); return late_images_; }
+private:
+    std::optional<StreamMessage> PopReady(std::unique_lock<std::mutex>& lk) {
         std::optional<StreamMessage> out;
         // An already selected pair is delivered together, even if newer images arrive.
         if (partner_) { out = std::move(partner_); partner_.reset(); }
@@ -89,16 +107,6 @@ public:
         lk.unlock(); space_.notify_one();
         return out;
     }
-    void Close() {
-        { std::lock_guard<std::mutex> lk(mu_); closed_ = true; }
-        cv_.notify_all(); space_.notify_all();
-    }
-    size_t max_depth() const { std::lock_guard<std::mutex> lk(mu_); return max_depth_; }
-    size_t max_bytes() const { std::lock_guard<std::mutex> lk(mu_); return max_bytes_; }
-    size_t dropped_pairs() const { std::lock_guard<std::mutex> lk(mu_); return dropped_pairs_; }
-    size_t dropped_incomplete() const { std::lock_guard<std::mutex> lk(mu_); return dropped_incomplete_; }
-    size_t late_images() const { std::lock_guard<std::mutex> lk(mu_); return late_images_; }
-private:
     struct Pair {
         std::optional<StreamMessage> left, right;
         bool complete() const { return left && right; }

@@ -236,9 +236,11 @@ cmd_run() {
   rt="${CONTAINERS[-1]}"
 
   # 2. gz (paused) + bridge + RuntimeLink.
+  local latest_stereo=0
+  if grep -q '^mode: *demo' "$REPO_ROOT/$live_cfg"; then latest_stereo=1; fi
   # shellcheck disable=SC2046
   CONTAINERS+=("$(docker run -d --name "ariadne-live-$id-sim" -u "$U" $(render_args) -v "$REPO_ROOT":/work -w /work \
-    -e GZ_SIM_SYSTEM_PLUGIN_PATH=/work/build/sim-plugins -e HOME=/tmp \
+    -e GZ_SIM_SYSTEM_PLUGIN_PATH=/work/build/sim-plugins -e HOME=/tmp -e ARIADNE_LIVE_LATEST="$latest_stereo" \
     -e GZ_TRANSPORT_RCVHWM=0 -e GZ_TRANSPORT_SNDHWM=0 \
     "$SIM_IMAGE" bash -c "source /opt/ros/jazzy/setup.bash && source build/ros2/install/setup.bash && \
       ros2 launch ariadne_sim live_world.launch.py scene_dir:=/work/$scene run_dir:=/work/$run")")

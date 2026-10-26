@@ -39,6 +39,10 @@ bucket() {
 # proven deterministic across machines at D168 M1); LIVE_AWS_MAX_MIN raises cmd_run's instance cap for long runs.
 PROFILE="${LIVE_AWS_PROFILE:-gpu}"
 RUN_MAX_MIN="${LIVE_AWS_MAX_MIN:-60}"
+INSTANCE_ARGS=()
+if [[ -n "${LIVE_AWS_INSTANCE_TYPE:-}" ]]; then
+  INSTANCE_ARGS=(--type "$LIVE_AWS_INSTANCE_TYPE")
+fi
 
 # local image -> ECR repo
 declare -A REPO=([ariadne/sim:dev]=ariadne/ariadne-sim [ariadne/core-dev:dev]=ariadne/ariadne-core [ariadne-console:1]=ariadne/ariadne-console [ariadne-orchestrator:1]=ariadne/ariadne-orchestrator [ariadne-recon:1]=ariadne/ariadne-gpu)
@@ -127,7 +131,7 @@ ARIADNE_SMOKE_OUT_HOST=$R/sim-smoke ARIADNE_SMOKE_TIMEOUT=120 infra/scripts/sim.
 docker run --rm --gpus all ariadne/sim:dev bash -c 'ls -la /usr/share/glvnd/egl_vendor.d/; ldconfig -p | grep -iE "libEGL_nvidia|libnvidia-egl" | head' > $R/egl_vendor.txt 2>&1 || true
 EOF
   } > "$script"
-  "$REPO_ROOT/infra/scripts/spinup.sh" run --profile "$PROFILE" --max-minutes 25 -- "$(cat "$script")"
+  "$REPO_ROOT/infra/scripts/spinup.sh" run --profile "$PROFILE" "${INSTANCE_ARGS[@]}" --max-minutes 25 -- "$(cat "$script")"
 }
 
 cmd_run() {
@@ -178,7 +182,7 @@ printf 'live_exit=%s\\nreplay_exit=%s\\n' "\$live_rc" "\$replay_rc" > \$R/missio
 test "\$live_rc" -eq 0 -a "\$replay_rc" -eq 0
 EOF
   } > "$script"
-  "$REPO_ROOT/infra/scripts/spinup.sh" run --profile "$PROFILE" --max-minutes "$RUN_MAX_MIN" -- "$(cat "$script")"
+  "$REPO_ROOT/infra/scripts/spinup.sh" run --profile "$PROFILE" "${INSTANCE_ARGS[@]}" --max-minutes "$RUN_MAX_MIN" -- "$(cat "$script")"
 }
 
 cmd_replay_s3() {   # S3_RUN_TARBALL SCENE - replay an EXISTING recording in-region (no local download; collab60d)
@@ -201,7 +205,7 @@ cp "\$run/replay_check.json" \$R/ 2>/dev/null || true
 tar czf \$R/replays.tar.gz "\$run"/replay1 "\$run"/replay2 "\$run"/replay*.log 2>/dev/null || true
 EOF
   } > "$script"
-  "$REPO_ROOT/infra/scripts/spinup.sh" run --profile "$PROFILE" --max-minutes "$RUN_MAX_MIN" -- "$(cat "$script")"
+  "$REPO_ROOT/infra/scripts/spinup.sh" run --profile "$PROFILE" "${INSTANCE_ARGS[@]}" --max-minutes "$RUN_MAX_MIN" -- "$(cat "$script")"
 }
 
 cmd_batch() {
@@ -255,7 +259,7 @@ while read -r preset seed end_s cfg; do
 done < $R/jobs.txt
 BATCH
   } > "$script"
-  "$REPO_ROOT/infra/scripts/spinup.sh" run --profile "$PROFILE" --max-minutes "$max_min" -- "$(cat "$script")"
+  "$REPO_ROOT/infra/scripts/spinup.sh" run --profile "$PROFILE" "${INSTANCE_ARGS[@]}" --max-minutes "$max_min" -- "$(cat "$script")"
 }
 
 case "${1:-}" in

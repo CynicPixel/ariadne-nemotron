@@ -63,3 +63,14 @@ TEST(SensorQueue, LosslessOverflowIsExplicitAndCloseRejectsPush) {
     EXPECT_EQ(q.Pop()->stamp_ns, 1);
     q.Close(); q.Push(M("imu", 3)); EXPECT_FALSE(q.Pop());
 }
+
+TEST(SensorQueue, FairSenderCanPollIncompleteStereoWithoutBlockingControl) {
+    MessageQueue image, control;
+    image.ConfigureSensor(4096, "L", "R"); control.ConfigureSensor(4096);
+    image.Push(M("L", 1));
+    EXPECT_FALSE(image.TryPop());
+    control.Push(M("imu", 1)); EXPECT_EQ(control.TryPop()->topic, "imu");
+    image.Push(M("R", 1));
+    EXPECT_EQ(image.TryPop()->topic, "L"); EXPECT_EQ(image.TryPop()->topic, "R");
+    EXPECT_FALSE(image.TryPop());
+}

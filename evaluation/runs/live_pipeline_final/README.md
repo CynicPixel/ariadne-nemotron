@@ -27,7 +27,12 @@ Main and its uncommitted changes were not modified.
 - 22 targeted scheduling, snapshot and multi-agent tests passed.
 - 16 reconstruction tests passed in `ariadne-recon:1` (CPU tests; no GPU speed claim).
 - Incremental runtime rebuild passed after stack manifest addition.
-- No new cloud mission has validated these changes yet.
+- The first 30-s live cloud smoke completed with GPU training, but its first command
+  arrived at 29.901 simulated seconds and recorded GT translation was zero. It
+  validates liveness, not exploration. Replay was skipped. See `smoke30/`.
+- Subsequent sender/tick changes passed 102 unit and 21 targeted tests; the ROS
+  bridge built. The further callback-isolation change also built; its live gate is pending.
+- Persistent research and remaining performance work: `docs/design/LIVE_PIPELINE_BACKPRESSURE.md`.
 
 `prior_200s_audit.json` describes the earlier successful live run and includes its archive SHA256.
 It records coordinated assignments on 20/40 and 18/40 decisions, frequent epoch mismatches,

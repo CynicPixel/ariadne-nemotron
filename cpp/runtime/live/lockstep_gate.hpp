@@ -8,6 +8,7 @@
 // ---------------------------------------------------------------------------
 #include <cstdint>
 #include <limits>
+#include <stdexcept>
 
 namespace ariadne::runtime::live {
 
@@ -38,6 +39,18 @@ inline bool AnyReached(const Lanes& lanes, int64_t T) {
 /// Collaborative maps belong to the mission thread. The central demo integrator
 /// must not consume their keyframes into the unrelated central planner.
 inline bool IntegrateAtDecision(bool demo, bool collaborative) { return !demo || collaborative; }
+
+// When demo drops obsolete decision horizons, radio time must still visit every
+// heartbeat period; otherwise a healthy peer looks partitioned by scheduler delay.
+template <typename F>
+inline void AdvanceRadioTicks(int64_t& last, int64_t until, int64_t period, F&& tick) {
+    if (period <= 0) throw std::invalid_argument("radio tick period must be positive");
+    while (last <= until - period) {
+        const int64_t next = last + period;
+        tick(next);
+        last = next;
+    }
+}
 
 /// Every lane finished BEFORE T: the mission ended early, nothing more will arrive.
 template <typename Lanes>
