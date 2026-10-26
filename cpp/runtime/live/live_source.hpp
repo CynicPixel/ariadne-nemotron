@@ -308,9 +308,9 @@ public:
     /// dedicated thread, handed to the VO thread through a depth-1 in-order slot. Content is bit-identical to the
     /// single-threaded shape (the unit guard holds the line); only timing overlaps. Depth 1 keeps the D166 pacing
     /// backpressure: at most one frame is pre-ingested ahead of the estimator.
-    LiveSimSource(const std::string& scene, int agent, MessageQueue& images, const GtStore& gt, std::mutex& turn,
+    LiveSimSource(const std::string& scene, int agent, MessageQueue& images, MessageQueue& imus, const GtStore& gt, std::mutex& turn,
                   const std::string& mission = "live", bool lens_on = true, bool pipelined = false)
-        : agent_(agent), images_(images), gt_(gt), turn_(turn), lens_on_(lens_on), pipelined_(pipelined) {
+        : agent_(agent), images_(images), imus_(imus), gt_(gt), turn_(turn), lens_on_(lens_on), pipelined_(pipelined) {
         const YAML::Node sc = YAML::LoadFile(scene + "/scene.json");
         const YAML::Node m = YAML::LoadFile(scene + "/mission_" + mission + ".json");
         scene_id_ = sc["scene_id"].as<std::string>();
@@ -322,6 +322,7 @@ public:
         if (!ag) throw std::runtime_error("live: agent " + std::to_string(agent) + " not in the mission");
         t_left_ = ag["topics"]["left_image"].as<std::string>();
         t_right_ = ag["topics"]["right_image"].as<std::string>();
+        t_imu_ = ag["topics"]["imu"].as<std::string>();
         const auto L = m["lens"];
         const auto R = m["render_intrinsics_pixel_centre"];
         lens_.width = m["rig"]["camera"]["width"].as<int>();
@@ -383,6 +384,31 @@ public:
     std::vector<TimedPose> GroundTruth() const override { return {}; }   // late: StereoVoArgs::late_ground_truth
     size_t FrameCount() const override { return 0; }                     // unknown ahead of time
     uint32_t Agent() const override { return uint32_t(agent_); }
+
+    std::vector<core::ImuMeasurement> Imu() override {
+        if (imu_.empty() && !ReadOneImu()) throw std::runtime_error("live: IMU stream closed before its first sample");
+        return imu_;
+    }
+    void RefreshImu(int64_t t_ns, std::vector<core::ImuMeasurement>& dst) override {
+        if (&dst == &imu_) throw std::logic_error("live: caller must own the IMU vector");
+        while (imu_.empty() || imu_.back().t_ns < t_ns) {
+            if (!ReadOneImu()) {
+                if (imu_.empty() || imu_.back().t_ns < t_ns)
+                    throw std::runtime_error("live: IMU stream ended before frame timestamp " + std::to_string(t_ns));
+                break;
+            }
+        }
+        if (dst.size() > imu_.size()) throw std::logic_error("live: caller IMU vector is ahead of source");
+        dst.insert(dst.end(), imu_.begin() + static_cast<std::ptrdiff_t>(dst.size()), imu_.end());
+    }
+    core::ImuNoise ImuNoiseModel() const override { return imu_noise_ ? imu_noise_->noise : core::ImuNoise{}; }
+    std::string ImuNoiseConfig() const override { return imu_noise_ ? imu_noise_->name : "none"; }
+    void SetImuNoise(const core::ImuNoiseOperatorParams& p, uint64_t run_seed) override {
+        const uint64_t seed = core::DeriveSeed(core::DeriveSeed(run_seed, core::seed_purpose::kImuNoise),
+                                               ("agent" + std::to_string(agent_)).c_str());
+        imu_noise_ = p;
+        imu_noise_stream_ = std::make_unique<core::ImuNoiseStream>(p, seed);
+    }
 
     /// D167 timers, per emitted frame: how long this lane sat idle (queue wait), waited for the other agent's
     /// turn (the D152a lock), and tracked (Feed, the estimator inside). Sums since the previous emission, so a
@@ -482,20 +508,40 @@ public:
 
     const std::string& left_topic() const { return t_left_; }
     const std::string& right_topic() const { return t_right_; }
+    const std::string& imu_topic() const { return t_imu_; }
     size_t unpaired() const { return unpaired_; }
 
 private:
     int agent_;
     MessageQueue& images_;
+    MessageQueue& imus_;
     const GtStore& gt_;
     std::mutex& turn_;
-    std::string scene_id_, rig_, t_left_, t_right_;
+    std::string scene_id_, rig_, t_left_, t_right_, t_imu_;
     perception::LensModel lens_;
     perception::LensMap map_;   // empty when lens_on_ is false
     bool lens_on_ = true;
     bool pipelined_ = false;    // D229
+    std::vector<core::ImuMeasurement> imu_;
+    std::optional<core::ImuNoiseOperatorParams> imu_noise_;
+    std::unique_ptr<core::ImuNoiseStream> imu_noise_stream_;
     core::SE3 T_B_left_, T_B_right_;
     size_t unpaired_ = 0;
+
+    bool ReadOneImu() {
+        auto msg = imus_.Pop();
+        if (!msg) return false;
+        const auto decoded = ros_cdr::DecodeImu(msg->data->data(), msg->data->size());
+        core::ImuMeasurement s;
+        s.t_ns = decoded.header.stamp.ns();
+        s.gyro = core::Vec3(decoded.angular_velocity.x, decoded.angular_velocity.y, decoded.angular_velocity.z);
+        s.accel = core::Vec3(decoded.linear_acceleration.x, decoded.linear_acceleration.y, decoded.linear_acceleration.z);
+        if (imu_noise_stream_) s = imu_noise_stream_->Apply(s);
+        if (!imu_.empty() && s.t_ns <= imu_.back().t_ns)
+            throw std::runtime_error("live: IMU timestamps are not strictly increasing");
+        imu_.push_back(std::move(s));
+        return true;
+    }
 };
 
 }  // namespace ariadne::runtime::live

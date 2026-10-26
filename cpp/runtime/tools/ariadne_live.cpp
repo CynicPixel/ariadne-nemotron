@@ -332,6 +332,8 @@ private:
 
 struct AgentLane {
     live::MessageQueue images{64};   // ~64 x 2.8 MB per agent at most (bounded: see MessageQueue)
+    live::MessageQueue imus{512};    // 2.5 s at 200 Hz; preserves timestamp order and bounds backlog
+    live::MessageQueue worker_inputs{128};  // bounded release-order FIFO keeps image/IMU transport ordered
     live::GtStore gt;
     std::mutex mu;
     std::deque<KfRec> kfs;                               // delivered by the VO thread, consumed by the mission
@@ -431,6 +433,7 @@ int RunEstimatorWorker(const std::string& scene, int agent, const std::string& s
     std::optional<live::CollabTee> tee;
     if (!collab_socket.empty()) tee.emplace(live::Connect(collab_socket, std::chrono::seconds(60)), uint32_t(agent));
     live::MessageQueue images{64};
+    live::MessageQueue imus{512};
     live::GtStore gt;
     std::mutex turn;   // never contended: one estimator per process is the point
     // D229: the lane ingest pipeline - measured NO RTF gain lens-off (A2 job 15: 0.833 vs 0.839; the lane is
@@ -439,7 +442,7 @@ int RunEstimatorWorker(const std::string& scene, int agent, const std::string& s
     // (lens-on or degradation rows).
     const char* lp = std::getenv("ARIADNE_LANE_PIPELINE");
     const bool pipelined = lp && std::string(lp) == "1";
-    live::LiveSimSource src(scene, agent, images, gt, turn, "live", lens_on, pipelined);
+    live::LiveSimSource src(scene, agent, images, imus, gt, turn, "live", lens_on, pipelined);
     std::mutex send_mu;
     auto send = [&](const char* topic, const std::vector<uint8_t>& b) {
         std::lock_guard<std::mutex> lk(send_mu);
@@ -453,6 +456,11 @@ int RunEstimatorWorker(const std::string& scene, int agent, const std::string& s
                 m.topic = f.topic;
                 m.data = std::make_shared<const std::vector<uint8_t>>(std::move(f.payload));
                 images.Push(std::move(m));
+            } else if (f.topic == src.imu_topic()) {
+                live::StreamMessage m;
+                m.topic = f.topic;
+                m.data = std::make_shared<const std::vector<uint8_t>>(std::move(f.payload));
+                imus.Push(std::move(m));
             } else {   // this agent's gt pose, raw CDR exactly as the link delivered it
                 const auto g = runtime::ros_cdr::DecodePoseStamped(f.payload.data(), f.payload.size());
                 runtime::TimedPose tp{g.header.stamp.ns(), {}};
@@ -464,6 +472,7 @@ int RunEstimatorWorker(const std::string& scene, int agent, const std::string& s
             }
         }
         images.Close();
+        imus.Close();
     });
     src.on_timing = [&](int64_t t_ns, double w, double l, double tr) {
         std::vector<uint8_t> b;
@@ -631,6 +640,7 @@ int main(int argc, char** argv) {
             if (k == "--scene") scene = v;
             else if (k == "--perception-config") va.perception_config = v;
             else if (k == "--slam-config") va.slam_config = v;
+            else if (k == "--imu-noise-config") va.imu_noise_config = v;
             else if (k == "--mission-config") mission_cfg_path = v;
             else if (k == "--live-config") live_cfg_path = v;
             else if (k == "--out") out = v;
@@ -923,15 +933,19 @@ int main(int argc, char** argv) {
                 return;
             }
             const auto [agent, role] = it->second;
-            if (role == "image" && m.stamp_ns > end_ns) {   // the end of the run: identical cut live and in replay
+            if ((role == "image" || role == "imu") && m.stamp_ns > end_ns) {   // same live/replay mission boundary
                 past_end = true;
-                for (auto& l : lanes) l.images.Close();
+                for (auto& l : lanes) l.images.Close(), l.imus.Close(), l.worker_inputs.Close();
                 return;
             }
             m.seq = ++seq;
             rec.Write(m);
             if (role == "image") {
-                lanes[agent].images.Push(std::move(m));
+                if (lc.estimator_processes) lanes[agent].worker_inputs.Push(std::move(m));
+                else lanes[agent].images.Push(std::move(m));
+            } else if (role == "imu") {
+                if (lc.estimator_processes) lanes[agent].worker_inputs.Push(std::move(m));
+                else lanes[agent].imus.Push(std::move(m));
             } else if (role == "gt") {
                 const auto p = runtime::ros_cdr::DecodePoseStamped(m.data->data(), m.data->size());
                 runtime::TimedPose tp{p.header.stamp.ns(), {}};
@@ -972,7 +986,14 @@ int main(int argc, char** argv) {
         };
 
         std::thread reader;
+        // Keep failures from the replay producer on the owning thread. An
+        // exception escaping a std::thread entry point terminates the process
+        // and hides the MCAP/dispatch error that caused it.
+        std::exception_ptr replay_reader_error;
         long reorder_timeouts = 0, reorder_order_breaks = 0;
+        // Start ingestion only after model/config validation and worker sockets
+        // exist. Replay can otherwise race startup and lose early GT forwarding.
+        auto start_reader = [&] {
         if (is_live) {
             reader = std::thread([&] {
                 // D166: the wall-clock timeout skip made release order hardware-dependent under lockstep
@@ -1024,7 +1045,7 @@ int main(int argc, char** argv) {
                 }
                 reorder_timeouts = ro.released_on_timeout();
                 reorder_order_breaks = ro.released_out_of_order();
-                for (auto& l : lanes) l.images.Close();
+                for (auto& l : lanes) l.images.Close(), l.imus.Close(), l.worker_inputs.Close();
                 {
                     std::lock_guard<std::mutex> lk(progress_mu);
                     input_done = true;
@@ -1033,19 +1054,29 @@ int main(int argc, char** argv) {
             });
         } else {
             reader = std::thread([&] {
-                runtime::RosbagReader bag;
-                bag.Open(replay_path);
-                const auto types = bag.topics();
-                bag.Replay([&](const runtime::RosMessage& msg) {
-                    live::StreamMessage m;
-                    m.topic = std::string(msg.topic);
-                    m.type = types.at(m.topic);
-                    auto data = std::make_shared<std::vector<uint8_t>>(msg.data, msg.data + msg.size);
-                    m.stamp_ns = live::PeekStamp(m.type, *data);
-                    m.data = std::move(data);
-                    Dispatch(std::move(m));
-                });
-                for (auto& l : lanes) l.images.Close();
+                try {
+                    runtime::RosbagReader bag;
+                    bag.Open(replay_path);
+                    const auto types = bag.topics();
+                    bag.Replay([&](const runtime::RosMessage& msg) {
+                        live::StreamMessage m;
+                        m.topic = std::string(msg.topic);
+                        const auto type = types.find(m.topic);
+                        if (type == types.end()) throw std::runtime_error("rosbag: missing topic schema for " + m.topic);
+                        m.type = type->second;
+                        auto data = std::make_shared<std::vector<uint8_t>>(msg.data, msg.data + msg.size);
+                        m.stamp_ns = live::PeekStamp(m.type, *data);
+                        m.data = std::move(data);
+                        Dispatch(std::move(m));
+                    });
+                } catch (const std::exception& e) {
+                    std::fprintf(stderr, "ariadne_live: replay input reader: %s\n", e.what());
+                    replay_reader_error = std::current_exception();
+                } catch (...) {
+                    std::fprintf(stderr, "ariadne_live: replay input reader: unknown exception\n");
+                    replay_reader_error = std::current_exception();
+                }
+                for (auto& l : lanes) l.images.Close(), l.imus.Close(), l.worker_inputs.Close();
                 {
                     std::lock_guard<std::mutex> lk(progress_mu);
                     input_done = true;
@@ -1053,6 +1084,8 @@ int main(int argc, char** argv) {
                 progress_cv.notify_all();
             });
         }
+
+        };
 
         // --- per-agent estimators: the replay path, unchanged ---------------------------------------------------
         std::vector<std::thread> vo(static_cast<size_t>(NA));
@@ -1263,6 +1296,7 @@ int main(int argc, char** argv) {
                                                     "--estimator-worker", ka.c_str(),
                                                     "--worker-socket", wsock.c_str(),
                                                     "--lens", lensa.c_str()};
+                    if (!va.imu_noise_config.empty()) cas.insert(cas.end(), {"--imu-noise-config", va.imu_noise_config.c_str()});
                     if (!csock.empty()) cas.insert(cas.end(), {"--collab-socket", csock.c_str()});
                     cas.push_back(nullptr);
                     ::execv(cas[0], const_cast<char**>(cas.data()));
@@ -1272,7 +1306,7 @@ int main(int argc, char** argv) {
                 worker_fd[k] = live::ListenAndAccept(wsock);
                 ::unlink(wsock.c_str());
                 feeders[k] = std::thread([&, k] {
-                    while (auto m = lanes[k].images.Pop()) {
+                    while (auto m = lanes[k].worker_inputs.Pop()) {
                         std::lock_guard<std::mutex> lk(worker_mu[k]);
                         if (!live::WriteFrame(worker_fd[k], m->topic, m->data->data(), m->data->size())) break;
                     }
@@ -1317,7 +1351,7 @@ int main(int argc, char** argv) {
                 });
                 continue;
             }
-            sources[k] = std::make_unique<live::LiveSimSource>(scene, k, lanes[k].images, lanes[k].gt, estimator_turn,
+            sources[k] = std::make_unique<live::LiveSimSource>(scene, k, lanes[k].images, lanes[k].imus, lanes[k].gt, estimator_turn,
                                                                "live", lc.lens);
             sources[k]->on_timing = [&, k](int64_t t_ns, double w, double l, double tr) { deliver_timing(k, t_ns, w, l, tr); };
             vo[k] = std::thread([&, k] {
@@ -1428,6 +1462,7 @@ int main(int argc, char** argv) {
         // 'without an active exception', and e.what() was lost). Caught here, printed, then the one teardown
         // path below runs (joins, Shutdown, rec.Close, results.yaml) and the process still exits nonzero.
         std::exception_ptr mission_err;
+        start_reader();
         try {
         for (int64_t T = replan_ns; T <= end_ns; T += replan_ns) {
             {
@@ -1797,11 +1832,13 @@ int main(int argc, char** argv) {
                        << JsonEscape(ma_picks[size_t(k)].why) << "\",\"broker\":" << int(comp.broker)
                        << ",\"members\":" << comp.members.size() << ",\"epoch\":" << comp.epoch.counter << "}";
                 }
-                const auto& lg = ma->comms->ledger();
-                mt << "],\"bytes\":{\"patch\":" << lg.TotalForClass(core::MessageClass::SUBMAP_PATCH)
-                   << ",\"bid\":" << lg.TotalForClass(core::MessageClass::TASK_BID)
-                   << ",\"consensus\":" << lg.TotalForClass(core::MessageClass::TASK_CONSENSUS)
-                   << ",\"heartbeat\":" << lg.TotalForClass(core::MessageClass::HEARTBEAT) << "}}";
+                const auto charged = [&](core::MessageClass cls) {
+                    return csnap ? csnap->Bytes(cls) : ma->comms->ledger().TotalForClass(cls);
+                };
+                mt << "],\"bytes\":{\"patch\":" << charged(core::MessageClass::SUBMAP_PATCH)
+                   << ",\"bid\":" << charged(core::MessageClass::TASK_BID)
+                   << ",\"consensus\":" << charged(core::MessageClass::TASK_CONSENSUS)
+                   << ",\"heartbeat\":" << charged(core::MessageClass::HEARTBEAT) << "}}";
                 plan_out.trace_json = mt.str();
                 // The console map and the return route are what the OPERATOR received over the radio (D175 SS8.2,
                 // the honest behaviour): the merged layer in the occupancy_grid slab convention, and A1's
@@ -2394,6 +2431,7 @@ int main(int argc, char** argv) {
         }
         if (is_live) ::shutdown(fd, SHUT_RDWR);
         reader.join();
+        if (replay_reader_error && !mission_err) mission_err = replay_reader_error;
         rec.Close();
         if (is_live) ::close(fd);
 

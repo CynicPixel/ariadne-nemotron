@@ -41,6 +41,44 @@ struct ImuNoiseOperatorParams {
     Vec3 accel_bias0 = Vec3::Zero();   // m/s^2, b_a,0
 };
 
+/// Incremental form of ApplyImuNoise for a live stream. It preserves the same
+/// Philox key, draw order, arithmetic order, and running bias state as the
+/// batch operator, so live chunks are bit-identical to a recorded replay.
+class ImuNoiseStream {
+public:
+    ImuNoiseStream(const ImuNoiseOperatorParams& p, uint64_t seed)
+        : p_(p), seed_(seed), bg_(p.gyro_bias0), ba_(p.accel_bias0) {
+        if (!(p_.noise.rate_hz > 0.0)) throw std::invalid_argument("IMU noise stream rate_hz must be > 0");
+        const double dt = 1.0 / p_.noise.rate_hz;
+        sw_g_ = p_.noise.gyro_noise_density / std::sqrt(dt);
+        sw_a_ = p_.noise.accel_noise_density / std::sqrt(dt);
+        sb_g_ = p_.noise.gyro_random_walk * std::sqrt(dt);
+        sb_a_ = p_.noise.accel_random_walk * std::sqrt(dt);
+    }
+
+    ImuMeasurement Apply(const ImuMeasurement& clean) {
+        PhiloxStream s(seed_, index_++, 0);
+        Vec3 ng, na, mg, ma;
+        for (int i = 0; i < 3; ++i) ng[i] = SampleStandardNormal(s);
+        for (int i = 0; i < 3; ++i) na[i] = SampleStandardNormal(s);
+        for (int i = 0; i < 3; ++i) mg[i] = SampleStandardNormal(s);
+        for (int i = 0; i < 3; ++i) ma[i] = SampleStandardNormal(s);
+        ImuMeasurement out;
+        out.t_ns = clean.t_ns;
+        out.gyro = clean.gyro + bg_ + sw_g_ * ng;
+        out.accel = clean.accel + ba_ + sw_a_ * na;
+        bg_ += sb_g_ * mg;
+        ba_ += sb_a_ * ma;
+        return out;
+    }
+
+private:
+    ImuNoiseOperatorParams p_;
+    uint64_t seed_ = 0, index_ = 0;
+    Vec3 bg_, ba_;
+    double sw_g_ = 0, sw_a_ = 0, sb_g_ = 0, sb_a_ = 0;
+};
+
 /// A rig-scoped IMU noise config (configs/sim/imu_noise_*.yaml); strict keys.
 inline ImuNoiseOperatorParams ParseImuNoiseOperator(StrictConfig& c) {
     ImuNoiseOperatorParams p;
@@ -75,24 +113,9 @@ inline ImuNoiseOperatorParams LoadImuNoiseOperator(const std::string& path) {
 /// The noisy stream, parallel to `clean` (sample k = clean[k], in stream order).
 inline std::vector<ImuMeasurement> ApplyImuNoise(const std::vector<ImuMeasurement>& clean,
                                                  const ImuNoiseOperatorParams& p, uint64_t seed) {
-    const double dt = 1.0 / p.noise.rate_hz;
-    const double sw_g = p.noise.gyro_noise_density / std::sqrt(dt), sw_a = p.noise.accel_noise_density / std::sqrt(dt);
-    const double sb_g = p.noise.gyro_random_walk * std::sqrt(dt), sb_a = p.noise.accel_random_walk * std::sqrt(dt);
-    Vec3 bg = p.gyro_bias0, ba = p.accel_bias0;
+    ImuNoiseStream stream(p, seed);
     std::vector<ImuMeasurement> out(clean.size());
-    for (size_t k = 0; k < clean.size(); ++k) {
-        PhiloxStream s(seed, static_cast<uint64_t>(k), 0);
-        Vec3 ng, na, mg, ma;   // fixed draw order: gyro white, accel white, gyro step, accel step
-        for (int i = 0; i < 3; ++i) ng[i] = SampleStandardNormal(s);
-        for (int i = 0; i < 3; ++i) na[i] = SampleStandardNormal(s);
-        for (int i = 0; i < 3; ++i) mg[i] = SampleStandardNormal(s);
-        for (int i = 0; i < 3; ++i) ma[i] = SampleStandardNormal(s);
-        out[k].t_ns = clean[k].t_ns;
-        out[k].gyro = clean[k].gyro + bg + sw_g * ng;
-        out[k].accel = clean[k].accel + ba + sw_a * na;
-        bg += sb_g * mg;
-        ba += sb_a * ma;
-    }
+    for (size_t k = 0; k < clean.size(); ++k) out[k] = stream.Apply(clean[k]);
     return out;
 }
 

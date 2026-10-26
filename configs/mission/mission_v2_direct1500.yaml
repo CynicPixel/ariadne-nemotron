@@ -1,0 +1,23 @@
+# Phase 4 planner (planning::Phase4Planner; D110-D116). mission_v1's mapping values stay (the 1.8 layer is the
+# ablation baseline); these are the Phase 4 planner's own keys. Every value fixed before the first gate run
+# (NBV_4.3 §5 pre-registered axes).
+name: mission_v2
+base: mission_v1                 # grid, carving, slab, clearance, replan_period_s: mission_v1's
+planner:
+  policy: ariadne                # ariadne | coverage_greedy | uncertainty_only | random | tare (NBV_4.3 §5, D116);
+                                 # the 1.8 nearest-frontier row is B's PlaceholderPlanner, not this planner
+  random_seed: 0                 # the random row's Philox seed; the run's seed is mixed in by the runtime
+  allocator: cbba                # cbba | sga | greedy (D115); only the ariadne policy allocates by auction
+  max_bundle: 1                  # D115 correction: CBBA = SGA exactly at L_t = 1; 2 is a reported row
+  risk_calibrated: true          # D112 passed its pre-registered bar (eval AUC 0.831 >= 0.75, 2026-10-23): the [PROXY]
+                                 # enters C_risk and the egress cost (w_r = 1); it saturates (FPR 0.34), stated in D112
+energy:                          # the kinematic rig's energy is distance flown (NBV_4.3 §4)
+  end_s: 1500.0                   # direct-demo diagnostic horizon in simulated seconds
+  speed_mps: 0.6                 # worldgen motion.v_cap_mps (python/dataset_tools/worldgen/params.py)
+  e_total_m: 900.0               # speed_mps × end_s, preserving the same maximum-flight fraction for this horizon
+  e_per_m: 1.0                   # energy unit = metres
+  reserve: 1.3                   # §21.4 hard rule: E_remaining < 1.3 E(return) -> {return, hold}
+nbv:
+  rays_grid: 16                  # 256 rays (arch §21.3: 200-500)
+  rank_grid: 8                   # 64-ray view ranking (measured: 5.9 s -> 2.0 s per plan)
+  tare_subspace_m: 6.0           # 2 x the 2.84 m depth gate (D116)

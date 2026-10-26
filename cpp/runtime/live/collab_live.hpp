@@ -30,8 +30,10 @@
 #include <atomic>
 #include <condition_variable>
 #include <deque>
+#include <filesystem>
 #include <fstream>
 #include <functional>
+#include <iterator>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -73,7 +75,20 @@ struct CollabSnapshot {
     std::map<ac::AgentId, core::SE3> T_O0_O;   // agents merged with agent 0: T_G_W(0)^-1 T_G_W(k)
     std::map<ac::AgentId, bool> linked;        // in agent 0's connected component
     std::map<ac::AgentId, CollabAgentView> agent;   // per fleet member (D175 reads)
+    std::map<core::MessageClass, uint64_t> wire_bytes;
     std::string telemetry;                     // one JSON line for the console's comms panel
+
+    // Called only by the fleet owner before publication. Mission readers must
+    // never sample its mutable ledger while asynchronous ticks are running.
+    void CaptureBytes(const core::ByteLedger& ledger) {
+        for (auto cls : {core::MessageClass::SUBMAP_PATCH, core::MessageClass::TASK_BID,
+                         core::MessageClass::TASK_CONSENSUS, core::MessageClass::HEARTBEAT})
+            wire_bytes[cls] = ledger.TotalForClass(cls);
+    }
+    uint64_t Bytes(core::MessageClass cls) const {
+        const auto it = wire_bytes.find(cls);
+        return it == wire_bytes.end() ? 0 : it->second;
+    }
 };
 
 class CollabLive {
@@ -98,6 +113,8 @@ public:
                  }) {
         if (replay_) LoadLog(p_.replay_log);
         else if (!p_.log_path.empty()) {
+            payload_dir_ = std::filesystem::path(p_.log_path).parent_path() / "collab_payloads";
+            std::filesystem::create_directories(payload_dir_);
             log_.open(p_.log_path);
             if (!p_.identity.empty()) Log("{\"e\":\"identity\",\"v\":\"" + p_.identity + "\"}");
         }
@@ -222,6 +239,7 @@ private:
         std::thread reader;
         std::deque<std::pair<CollabStoreRecord, uint32_t>> records;        // arrived, not yet committed
         std::map<uint64_t, std::optional<CollabLocalFeatures>> replies;   // arrived, not yet committed
+        std::map<uint64_t, std::vector<uint8_t>> record_wire, reply_wire;
         bool closed = false;
         std::string error;                                                // why the reader stopped, if it threw
         std::chrono::steady_clock::time_point last_frame{};               // replay: the worker's last sign of life
@@ -261,8 +279,8 @@ private:
         Publish(it.t);
     }
 
-    /// Live: everything the readers filed since the last tick (agent order, then arrival order), logged.
-    /// Replay: exactly the commits logged for this tick, waiting for the workers to produce them.
+    /// Live: everything the readers filed since the last tick (agent order, then arrival order), logged with payload.
+    /// Replay: apply exactly the logged payloads for this tick; legacy logs fall back to worker reproduction.
     std::vector<Commit> TakeArrivals(int64_t t_ns) {
         std::vector<Commit> out;
         std::unique_lock<std::mutex> lk(in_mu_);
@@ -271,23 +289,45 @@ private:
                 for (auto& [r, n] : peer.records) {
                     out.emplace_back(k, "ckf", r.id);
                     staged_records_[{k, r.id}] = {std::move(r), n};
+                    auto wire = peer.record_wire.find(std::get<2>(out.back()));
+                    if (wire == peer.record_wire.end()) throw std::logic_error("collab log: missing #ckf payload");
+                    LogCommit(t_ns, k, "ckf", std::get<2>(out.back()), wire->second);
                 }
                 peer.records.clear();
+                peer.record_wire.clear();
                 for (auto& [kf, f] : peer.replies) {
                     out.emplace_back(k, "fresp", kf);
                     staged_replies_[{k, kf}] = std::move(f);
+                    auto wire = peer.reply_wire.find(kf);
+                    if (wire == peer.reply_wire.end()) throw std::logic_error("collab log: missing #fresp payload");
+                    LogCommit(t_ns, k, "fresp", kf, wire->second);
                 }
                 peer.replies.clear();
+                peer.reply_wire.clear();
             }
-            for (const auto& [k, kind, kf] : out)
-                Log("{\"e\":\"commit\",\"t\":" + std::to_string(t_ns) + ",\"agent\":" + std::to_string(k) +
-                    ",\"kind\":\"" + kind + "\",\"kf\":" + std::to_string(kf) + "}");
             return out;
         }
         const auto want = commits_.find(t_ns);
         if (want == commits_.end()) return out;
         for (const Commit& c : want->second) {
             const auto& [k, kind, kf] = c;
+            const auto payload = replay_payloads_.find({t_ns, k, kind, kf});
+            if (payload != replay_payloads_.end()) {
+                if (kind == "ckf") {
+                    uint32_t n = 0;
+                    CollabStoreRecord r = DecodeRecord(payload->second, &n);
+                    if (r.id != kf) throw std::runtime_error("collab replay: #ckf payload ID mismatch");
+                    staged_records_[{k, kf}] = {std::move(r), n};
+                } else if (kind == "fresp") {
+                    CollabFeatureReply r = DecodeFeatureReply(payload->second);
+                    if (r.kf != kf) throw std::runtime_error("collab replay: #fresp payload ID mismatch");
+                    staged_replies_[{k, kf}] = std::move(r.features);
+                } else {
+                    throw std::runtime_error("collab replay: unknown commit kind " + kind);
+                }
+                out.push_back(c);
+                continue;
+            }
             const auto has = [&] {
                 Peer& peer = peers_[k];
                 if (kind == "ckf")
@@ -350,7 +390,7 @@ private:
         const auto key = std::make_pair(k, kf);
         const auto it = ready_.find(key);
         if (it == ready_.end()) {
-            if (asked_.insert(key).second) {
+            if ((!replay_ || !replay_payloads_complete_) && asked_.insert(key).second) {
                 std::lock_guard<std::mutex> lk(in_mu_);
                 if (peers_.count(k)) SendFrame(k, "#freq", EncodeFeatureRequest(kf, tick_ns_));
             }
@@ -373,6 +413,7 @@ private:
         auto s = std::make_shared<CollabSnapshot>();
         s->version = ++version_;
         s->t_ns = t.ns;
+        s->CaptureBytes(comms_.ledger());
         const auto& n0 = fleet_.node(fleet_ids_.front());
         if (const auto T0 = n0.T_G_W())
             for (ac::AgentId k : fleet_ids_) {
@@ -433,12 +474,18 @@ private:
                 std::lock_guard<std::mutex> lk(in_mu_);
                 Peer& peer = peers_.at(k);
                 peer.last_frame = std::chrono::steady_clock::now();   // #cwm included: a busy worker is alive
+                if (replay_ && replay_payloads_complete_) {
+                    in_cv_.notify_all();  // payload-backed replay never consumes worker output
+                    continue;
+                }
                 if (f.topic == "#ckf") {
                     uint32_t n = 0;
                     CollabStoreRecord r = DecodeRecord(f.payload, &n);
+                    peer.record_wire[r.id] = std::move(f.payload);
                     peer.records.emplace_back(std::move(r), n);
                 } else if (f.topic == "#fresp") {
                     CollabFeatureReply rep = DecodeFeatureReply(f.payload);
+                    peer.reply_wire[rep.kf] = std::move(f.payload);
                     peer.replies[rep.kf] = std::move(rep.features);
                 }   // #cwm: D174's lockstep watermark, unused asynchronously
                 in_cv_.notify_all();
@@ -467,17 +514,47 @@ private:
         log_ << line << '\n';
     }
 
+    void LogCommit(int64_t t_ns, ac::AgentId agent, const std::string& kind, uint64_t kf,
+                   const std::vector<uint8_t>& payload) {
+        if (!log_.is_open()) return;
+        const std::string name = "a" + std::to_string(agent) + "_" + kind + "_kf" + std::to_string(kf) + "_t" +
+                                 std::to_string(t_ns) + ".bin";
+        const auto path = payload_dir_ / name;
+        std::ofstream out(path, std::ios::binary);
+        if (!out) throw std::runtime_error("collab log: cannot write payload " + path.string());
+        out.write(reinterpret_cast<const char*>(payload.data()), std::streamsize(payload.size()));
+        out.close();
+        if (!out) throw std::runtime_error("collab log: failed writing payload " + path.string());
+        Log("{\"e\":\"commit\",\"t\":" + std::to_string(t_ns) + ",\"agent\":" + std::to_string(agent) +
+            ",\"kind\":\"" + kind + "\",\"kf\":" + std::to_string(kf) +
+            ",\"payload\":\"collab_payloads/" + name + "\"}");
+    }
+
     void LoadLog(const std::string& path) {
         std::ifstream f(path);
         if (!f) throw std::runtime_error("collab replay: cannot read " + path);
+        payload_dir_ = std::filesystem::path(path).parent_path() / "collab_payloads";
         std::string line, logged_identity;
         while (std::getline(f, line)) {
             if (line.empty()) continue;
             const YAML::Node n = YAML::Load(line);
             const std::string e = n["e"].as<std::string>();
-            if (e == "commit")
-                commits_[n["t"].as<int64_t>()].emplace_back(n["agent"].as<ac::AgentId>(), n["kind"].as<std::string>(),
-                                                            n["kf"].as<uint64_t>());
+            if (e == "commit") {
+                const int64_t t = n["t"].as<int64_t>();
+                const ac::AgentId agent = n["agent"].as<ac::AgentId>();
+                const std::string kind = n["kind"].as<std::string>();
+                const uint64_t kf = n["kf"].as<uint64_t>();
+                commits_[t].emplace_back(agent, kind, kf);
+                if (n["payload"]) {
+                    const std::filesystem::path rel(n["payload"].as<std::string>());
+                    if (rel.parent_path() != "collab_payloads" || rel.filename().empty())
+                        throw std::runtime_error("collab replay: invalid payload path");
+                    std::ifstream in(payload_dir_ / rel.filename(), std::ios::binary);
+                    if (!in) throw std::runtime_error("collab replay: missing payload " + rel.filename().string());
+                    std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+                    replay_payloads_[{t, agent, kind, kf}] = std::move(bytes);
+                } else replay_payloads_complete_ = false;
+            }
             else if (e == "drain")
                 for (const auto& k : n["keys"]) drains_[{n["T"].as<int64_t>(), n["agent"].as<ac::AgentId>()}].push_back(k.as<std::string>());
             else if (e == "snap")
@@ -521,6 +598,9 @@ private:
     std::mutex log_mu_;
     std::ofstream log_;
     std::map<int64_t, std::vector<Commit>> commits_;
+    std::map<std::tuple<int64_t, ac::AgentId, std::string, uint64_t>, std::vector<uint8_t>> replay_payloads_;
+    bool replay_payloads_complete_ = true;
+    std::filesystem::path payload_dir_;
     std::map<std::pair<int64_t, ac::AgentId>, std::vector<std::string>> drains_;
     std::map<int64_t, uint64_t> snaps_read_;
     std::map<uint64_t, std::shared_ptr<const CollabSnapshot>> history_;

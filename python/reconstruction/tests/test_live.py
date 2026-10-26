@@ -31,6 +31,27 @@ def test_submaps_close_at_max_and_hold_anchor_relative_poses():
     np.testing.assert_allclose(s1.T_O_anchor @ s1.T_anchor_C[5], se3(0.5, [5, 0, 0]), atol=1e-12)
 
 
+def test_training_frame_cache_is_scoped_to_submap_and_close_isolated():
+    """Agents can both emit kf 18; closing one submap must preserve the other's frame and optimizer state."""
+    from types import SimpleNamespace
+    from ariadne_recon.live.trainer import LiveTrainer
+
+    trainer = LiveTrainer.__new__(LiveTrainer)
+    trainer.frames = {(3, 18): {"agent": 0, "sid": 3}, (7, 18): {"agent": 1, "sid": 7}}
+    trainer.state = {
+        3: SimpleNamespace(opt=SimpleNamespace(state={"old": "optimizer state"})),
+        7: SimpleNamespace(opt=SimpleNamespace(state={"keep": "optimizer state"})),
+    }
+    assert trainer._frame(SimpleNamespace(sid=3), 18)["agent"] == 0
+    assert trainer._frame(SimpleNamespace(sid=7), 18)["agent"] == 1
+
+    trainer._close(3)
+    assert (3, 18) not in trainer.frames
+    assert trainer._frame(SimpleNamespace(sid=7), 18)["agent"] == 1
+    assert trainer.state[3].opt.state == {}
+    assert trainer.state[7].opt.state == {"keep": "optimizer state"}
+
+
 def test_reanchor_moves_the_placement_and_nothing_inside():
     """Exit-gate bullet 2: a PGO update mid-training re-anchors submaps with zero retraining -- the Gaussians in the
     local frame are unchanged, only the placement moves, and it moves exactly by the anchor's correction."""

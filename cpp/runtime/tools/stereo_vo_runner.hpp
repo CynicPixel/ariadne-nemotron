@@ -123,7 +123,7 @@ struct FrameView {
 };
 
 struct StereoVoArgs {
-    std::string perception_config, slam_config, out;
+    std::string perception_config, slam_config, imu_noise_config, out;
     std::string lamp_calib;   // 5.2 (D146): the rig's lamp calibration, for a perception config with a falloff: section
     std::string scenario;     // 5.3 (D147): a scripted event the tool set on the source, for the manifest ("" = none)
     bool depth_eval = false;  // 5.5 (D148): SGBM depth vs the frames' GT depth at keyframes (evaluation only)
@@ -149,6 +149,8 @@ inline int RunStereoVo(runtime::StereoSource& inner_source, const StereoVoArgs& 
     const PerceptionConfig pcfg = LoadPerception(args.perception_config);
     // 2.2: the radiometric front end between the source and the rectifier (a call-through when mode is off).
     runtime::RadiometricSource source(inner_source, pcfg.radiometric);
+    if (!args.imu_noise_config.empty() && source.ImuNoiseConfig() == "none")
+        source.SetImuNoise(core::LoadImuNoiseOperator(args.imu_noise_config), args.seed);
     // 2.6 (D100): an RGB-D source feeds sensor depth through a virtual rig (perception/rgbd/depth_stereo.hpp) in
     // place of the right image, SGBM and the LK stereo matcher. Stereo sources take the unchanged path.
     const std::optional<DepthSensorModel> depth_model = source.DepthSensor();
@@ -195,7 +197,7 @@ inline int RunStereoVo(runtime::StereoSource& inner_source, const StereoVoArgs& 
     // 2.4 step 2: the gyro rotation between consecutive frames, in the rectified left camera, logged next to the
     // bridge (vo_trace.csv) to validate frame, sign and time alignment against ground truth BEFORE the estimator uses
     // the IMU. Zero bias here; the bias comes from initialisation later.
-    const std::vector<core::ImuMeasurement> imu = source.Imu();
+    std::vector<core::ImuMeasurement> imu = source.Imu();
     int64_t prev_frame_t_ns = -1;
     // imu_mode attitude_only (2.4, slam/inertial/attitude.hpp): gyro rotation while lost, gyro-seeded LK, gravity.
     std::unique_ptr<slam::AttitudeTracker> attitude;
@@ -301,6 +303,7 @@ inline int RunStereoVo(runtime::StereoSource& inner_source, const StereoVoArgs& 
         if (frame.agent != source.Agent() || frame.id != static_cast<uint64_t>(i)) {
             throw std::logic_error("stereo source: frame identity out of sequence at " + std::to_string(i));
         }
+        source.RefreshImu(frame.t_ns, imu);
         cv::Mat l, r, dz;   // dz: RGB-D depth on the rectified left grid (nearest: no invented depths)
         if (rgbd) {
             rectifier.RectifyLeft(frame.left, l);

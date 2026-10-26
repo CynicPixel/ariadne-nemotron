@@ -47,9 +47,10 @@ int main(int argc, char** argv) {
             const int k = ag["agent"].as<int>();
             gt_topics.insert(ag["topics"]["gt_pose"].as<std::string>());
             live::MessageQueue q{1};
+            live::MessageQueue imu_q{1};   // this tool reads calibration only; the IMU queue is intentionally unused
             live::GtStore g;
             std::mutex mu;
-            live::LiveSimSource src(scene, k, q, g, mu, "live");
+            live::LiveSimSource src(scene, k, q, imu_q, g, mu, "live");
             const auto calib = src.Calibration();
             const core::SE3 T_B_left = src.T_B_C0();
             const core::SE3 T_B_right = T_B_left * calib.T_right_left.inverse();

@@ -1,0 +1,48 @@
+# D174 live collaboration (LIVE_COLLAB; D221 wiring): collab_v2's values over the live runtime's radio. The
+# runtime asserts comms_scenario == multiagent.scenario.
+# 3.2 sim integration, pass B (ariadne_collab_sim; design SIMCOLLAB_3.2, D171). The sweep (infra/eval/collab_aws.sh)
+# writes one copy per run with arm / budget / ratio / scenario filled in; these are the shared values.
+arm: spectral
+# Held-out scene-1 calibration used by the evaluated scene-0 50% budget row.
+# Reused unchanged for this integrated live mission; not fitted to its results.
+budget_bytes_per_s: 31079.9
+budget_burst_bytes: 155400
+budget_source: "50% of scene-1 similarity fetch rate 62159.8 B/s (seeds 1,2,3); transferred to final live scene"
+response_ratio: 0.87543
+calibration_run: "scene 1 similarity arm: sim_s1_seed1,sim_s1_seed2,sim_s1_seed3"
+# budget_bytes_per_s / budget_burst_bytes / budget_source: required for greedy and spectral; derived per D171 §4
+# (fractions of the similarity arm's measured fetch rate on the OTHER scene; burst = one selection period)
+# response_ratio / calibration_run: the MATCH_RESPONSE compression ratio measured on the OTHER scene (COLLAB_3.2 §7)
+comms_scenario: configs/comms/ideal.yaml   # MUST equal the live config multiagent.scenario (one radio; D174/D175)
+dt_s: 0.02                      # sim step (D171 §1); 20 ms << the 1 s heartbeat and the 5 s selection period
+drain_s: 30.0                   # after the last release, before the §6 outcome
+ate_every_s: 1.0
+selection_interval_s: 5.0       # Swarm-SLAM's period (D170)
+candidate_ttl_s: 120.0          # [ASSUMPTION] D170; the sim runs report how many expire
+refine_passes: 2                # D170
+local_encoding: int8            # arch §15.7 default (per-keyframe scale); fp16 = the ablation row. D171: identical
+                                # LightGlue match sets to fp32 on the D90 sim pairs (LocalDescriptorCodec test)
+robust: true                    # PCM -> chordal re-init -> GNC-TLS (D76); false = the plain-PGO ablation row
+retrieval:
+  min_score: 0.8                # Swarm-SLAM's stereo similarity_threshold (cslam_experiments kitti_stereo.yaml, on
+                                # CosPlace, EigenPlaces' predecessor from the same group); sim check via edges.csv
+  top_k: 3                      # [ASSUMPTION] as the intra-agent loop closure (euroc_v2_loops.yaml)
+verify:                         # the 1.6 verifier's gates (edge_verifier.hpp defaults); recalibration on the other
+  min_matches: 40               # scene is D171 §2 (edges.csv carries the per-candidate GT errors it needs)
+  essential_threshold_px: 1.0
+  min_essential_inliers: 30
+  min_essential_inlier_ratio: 0.4
+  pnp_reprojection_px: 2.0
+  min_pnp_inliers: 72
+gate:                           # D71 gate + the loop noise model; EuRoC-fitted values (euroc_v2_loops.yaml),
+  noise_model: true             # carried to the sim [ASSUMPTION until the sim fit from edges.csv]
+  noise_k_t: 1.33
+  noise_floor_t_m: 0.014
+  noise_k_r: 0.178
+  noise_floor_r_rad: 0.0095
+entry_gate:                     # D178 known-entry gate, ENABLED on M's sweep PASS (26864da, 2026-10-24: scene-0
+  enabled: true                 # worst cell 3.78 m -> 0.0147 m, scene 1 unchanged, 0 corrupt, 0/269 + 0/291 true
+  chi2: 22.4577                 # edges rejected). chi-square 97.5 % at 6 dof
+  entry_sigma_m: 0.10           # operator placement, per axis [ASSUMPTION, physical]
+  entry_sigma_deg: 2.0
+  kappa: 2.9447                 # the sweep's odometry inflation

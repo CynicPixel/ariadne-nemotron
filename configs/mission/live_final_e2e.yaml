@@ -1,0 +1,42 @@
+# Integrated final-stack evidence run. This composes the independently evaluated
+# live choices: Bedrock task chooser, per-agent Phase 4 planner/CBBA, asynchronous
+# D174 collaboration and its known-entry robust merge gate. The long mission is
+# aligned with mission_v2's 200 s evaluation budget.
+name: live_final_e2e
+end_s: 200.0
+lens: false
+chooser: llm
+command:
+  max_length_m: 3.0
+  simplify_eps_cells: 1.0
+  face_frontier: true
+  min_goal_m: 1.0
+  escape_m: 0.5
+  max_standoff_m: 2.0
+  refused_radius_m: 0.5
+risk_gate:
+  autonomous_threshold: 0.5
+llm:
+  timeout_s: 120.0
+estimator_processes: true
+lockstep: true
+reorder:
+  hold_back_ms: 3000
+telemetry_hz: 20.0
+multiagent:
+  enabled: true
+  scenario: configs/comms/ideal.yaml
+  broker_mode: plain
+  consensus_timeout_s: 10.0
+  max_bid_options: 8
+collab:
+  enabled: true
+  config: configs/collab/collab_final_e2e.yaml
+  feature_latency_s: 3.0
+  worker_threads: 4
+  keep_s: 120
+  models:
+    place: .cache/models/eigenplaces_sim_ref/eigenplaces_r50_256_640x360.onnx
+    place_size: 640x360
+    aliked: .cache/models/aliked_lg_sim_ref/aliked_n16_k1024_1280x720.onnx
+    lightglue: .cache/models/aliked_lg_sim_ref/lightglue_aliked.onnx

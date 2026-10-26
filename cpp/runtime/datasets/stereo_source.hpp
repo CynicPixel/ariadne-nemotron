@@ -134,8 +134,14 @@ public:
     /// Calls on_frame for the first max_frames pairs (all if 0), in time order.
     virtual size_t ForEachFrame(size_t max_frames, const std::function<void(const StereoFrame&)>& on_frame) = 0;
     /// The body (IMU) stream, time-sorted, and its noise model (§10.2; plan 2.4). Empty when the source has no IMU.
-    virtual std::vector<core::ImuMeasurement> Imu() const { return {}; }
+    virtual std::vector<core::ImuMeasurement> Imu() { return {}; }
+    /// Append source samples through `t_ns` to `dst`; live sources block until covered,
+    /// recorded sources can keep the default no-op after returning their full vector.
+    virtual void RefreshImu(int64_t /*t_ns*/, std::vector<core::ImuMeasurement>& /*dst*/) {}
     virtual core::ImuNoise ImuNoiseModel() const { return {}; }
+    virtual void SetImuNoise(const core::ImuNoiseOperatorParams& /*p*/, uint64_t /*run_seed*/) {
+        throw std::logic_error("this source cannot apply an IMU noise operator");
+    }
     /// Ground-truth velocity and biases, time-sorted, for VALIDATING the inertial initialisation only (never fed to
     /// the estimator). Empty when the source has none.
     virtual std::vector<GroundTruthInertial> GroundTruthInertialStates() const { return {}; }
@@ -178,7 +184,7 @@ public:
     }
     std::string RunName() const override { return seq_.filename().string(); }
     std::string SceneName() const override { return "EuRoC/" + seq_.filename().string(); }
-    std::vector<core::ImuMeasurement> Imu() const override {
+    std::vector<core::ImuMeasurement> Imu() override {
         return ParseEurocImu(ReadTextFile((mav_ / "imu0/data.csv").string()), "imu0");
     }
     core::ImuNoise ImuNoiseModel() const override {
@@ -506,7 +512,7 @@ public:
     perception::radiometric::FlatField FlatFieldOf(int cam) const override { return flat_[cam == 0 ? 0 : 1]; }
     /// The IMU only once SetImuNoise was called (L2, D101): without it the source exposes no IMU, so default sim
     /// runs (imu_mode none, the Phase-1 gate) see exactly what they saw before.
-    std::vector<core::ImuMeasurement> Imu() const override { return imu_; }
+    std::vector<core::ImuMeasurement> Imu() override { return imu_; }
     core::ImuNoise ImuNoiseModel() const override { return imu_noise_ ? imu_noise_->noise : core::ImuNoise{}; }
     std::string ImuNoiseConfig() const override { return imu_noise_ ? imu_noise_->name : "none"; }
     std::optional<LampRig> Lamp() const override { return lamp_; }
@@ -537,7 +543,7 @@ public:
     /// Read the canonical (clean) IMU stream and apply the seeded noise operator `p` (L2, D101;
     /// core/inertial/imu_noise_operator.hpp). The seed derives from the run seed and the agent, as D's do. A config
     /// with all densities 0 exposes the clean stream. ImuNoiseModel() then reports exactly the injected model.
-    void SetImuNoise(const core::ImuNoiseOperatorParams& p, uint64_t run_seed) {
+    void SetImuNoise(const core::ImuNoiseOperatorParams& p, uint64_t run_seed) override {
         std::vector<core::ImuMeasurement> clean;
         RosbagReader bag;
         bag.Open(rec_ + "/canonical/canonical_0.mcap");

@@ -41,8 +41,12 @@ public:
     std::vector<TimedPose> GroundTruth() const override { return inner_.GroundTruth(); }
     size_t FrameCount() const override { return inner_.FrameCount(); }
     uint32_t Agent() const override { return inner_.Agent(); }
-    std::vector<core::ImuMeasurement> Imu() const override { return inner_.Imu(); }
+    std::vector<core::ImuMeasurement> Imu() override { return inner_.Imu(); }
+    void RefreshImu(int64_t t_ns, std::vector<core::ImuMeasurement>& dst) override { inner_.RefreshImu(t_ns, dst); }
     core::ImuNoise ImuNoiseModel() const override { return inner_.ImuNoiseModel(); }
+    void SetImuNoise(const core::ImuNoiseOperatorParams& p, uint64_t run_seed) override {
+        inner_.SetImuNoise(p, run_seed);
+    }
     std::vector<GroundTruthInertial> GroundTruthInertialStates() const override {
         return inner_.GroundTruthInertialStates();
     }

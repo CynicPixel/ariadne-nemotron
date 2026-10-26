@@ -163,6 +163,10 @@ cmd_run() {
   [ "$max_minutes" -ge 5 ] && [ "$max_minutes" -le 240 ] || die "--max-minutes must be 5..240"
   local test_cmd="$*"
   profile_defaults "$profile"
+  if [ -n "${ARIADNE_ROOT_GB:-}" ]; then
+    [[ "$ARIADNE_ROOT_GB" =~ ^[0-9]+$ ]] && [ "$ARIADNE_ROOT_GB" -gt 0 ] || die 'ARIADNE_ROOT_GB must be positive GiB'
+    ROOT_GB="$ARIADNE_ROOT_GB"
+  fi
   runner_outputs
   choose_placement "$market" "$az"
 
@@ -175,7 +179,7 @@ cmd_run() {
   #    is not committed yet is tested too; build/ and secrets stay out via
   #    .gitignore.
   (cd "$REPO_ROOT" && git ls-files -z --cached --others --exclude-standard \
-     | tar --null -T - -czf "$run_dir/repo.tar.gz")
+     | tar --exclude="${ARIADNE_SNAPSHOT_EXCLUDE:-__no_snapshot_exclusions__}" --null -T - -czf "$run_dir/repo.tar.gz")
   awsq s3 cp "build/runs/$run_id/repo.tar.gz" "$s3_run/input/repo.tar.gz" --only-show-errors >/dev/null
   log "uploaded repo snapshot ($(du -h "$run_dir/repo.tar.gz" | cut -f1))"
 

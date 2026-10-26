@@ -3,6 +3,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <string>
@@ -50,6 +51,21 @@ TEST(ImuNoise, BitIdenticalPerSeedAndSampleWhateverTheReplayLength) {
     for (size_t k = 0; k < full.size(); ++k) ASSERT_TRUE(BitEqual(again[k], full[k]));
     const auto other = ApplyImuNoise(clean, p, 43);
     EXPECT_FALSE(BitEqual(other[10], full[10]));
+}
+
+TEST(ImuNoise, IncrementalStreamMatchesBatchAcrossArbitraryChunks) {
+    const auto p = Params(1.6968e-4, 1.9393e-5, 2.0e-3, 3.0e-3);
+    const auto clean = Clean(4073);
+    const auto batch = ApplyImuNoise(clean, p, 9182);
+    ImuNoiseStream stream(p, 9182);
+    std::vector<ImuMeasurement> streamed;
+    for (size_t begin = 0; begin < clean.size();) {
+        const size_t count = std::min<size_t>((begin % 137) + 1, clean.size() - begin);
+        for (size_t k = begin; k < begin + count; ++k) streamed.push_back(stream.Apply(clean[k]));
+        begin += count;
+    }
+    ASSERT_EQ(streamed.size(), batch.size());
+    for (size_t k = 0; k < batch.size(); ++k) EXPECT_TRUE(BitEqual(streamed[k], batch[k])) << "sample " << k;
 }
 
 TEST(ImuNoise, ZeroDensitiesReturnTheCleanStreamPlusTheInitialBias) {
