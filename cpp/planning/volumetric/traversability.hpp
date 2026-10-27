@@ -66,6 +66,21 @@ struct TraversabilityMaps {
 
 TraversabilityMaps ComputeTraversability(const TsdfMap& map, const Esdf& esdf, const GridFrame& g, const TravParams& p);
 
+/// The per-column part of ComputeTraversability, which the live planner caches across replans. A column reads the
+/// map and the ESDF only within TravColumnReach voxels of itself in x-y (ESDF reach k, plus the +-2 "open beneath"
+/// window and the normal's +-1), so after Integrate only columns that close to a dirty block can change.
+struct TravColumns {
+    cv::Mat cap_occ, clear_a, trav_r_strict, trav_a, slab, n_down, n_hang;
+    bool Empty() const { return slab.empty(); }
+};
+int TravColumnReach(const Esdf& esdf, double voxel);
+/// Recompute the columns where `mask` (CV_8U, grid-sized) is nonzero; an empty mask or empty `out` = every column.
+void UpdateTravColumns(const TsdfMap& map, const Esdf& esdf, const GridFrame& g, const TravParams& p,
+                       const cv::Mat& mask, TravColumns* out);
+/// The whole-grid rest (2D observed clearance, risk filters) from the columns: cheap image operations.
+TraversabilityMaps FinishTraversability(const TravColumns& t, const GridFrame& g, double voxel, double d_max,
+                                        const TravParams& p);
+
 /// Unit SDF normal at a voxel by central differences; false unless all 6 neighbours are known.
 bool SdfNormal(const TsdfMap& map, const Idx3& v, core::Vec3* n);
 

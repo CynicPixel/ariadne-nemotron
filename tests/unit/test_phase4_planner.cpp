@@ -328,3 +328,48 @@ TEST(Phase4Planner, PartitionFreezesPeersAndIsLabelled) {
     EXPECT_EQ(P.SharedTrack(0, 2), 2u);
     EXPECT_EQ(P.SharedTrack(2, 1), 2u);
 }
+
+TEST(Phase4Planner, CachedTraversabilityEqualsAFullRecomputeBitForBit) {
+    // The live planner recomputes only the columns near new map changes between replans; after several views and
+    // replans every traversability layer must equal ComputeTraversability on the final map, bit for bit.
+    Phase4Briefing b;
+    b.grid.ox = 0, b.grid.oy = 0, b.grid.cell = 0.05, b.grid.cols = 120, b.grid.rows = 120;
+    b.target = {60, 110};
+    b.entrances = {{60, 10}};
+    Phase4Params prm;
+    const int W = 160, H = 90;
+    std::vector<Phase4AgentInput> ag(2);
+    ag[0].active = true;
+    Phase4Planner P(b, prm);
+    // Fronto-parallel planes at different depths seen from different spots and headings: each view dirties a
+    // different part of the grid, and replans fall between views.
+    const struct { double x, y, yaw, depth; } views[] = {
+        {1.0, 3.0, 0.0, 2.0}, {3.0, 1.0, M_PI / 2, 1.5}, {5.0, 3.0, M_PI, 2.5}, {3.0, 5.0, -M_PI / 2, 1.2}, {2.0, 2.0, 0.7, 3.0}};
+    int i = 0;
+    for (const auto& v : views) {
+        std::vector<float> Z(size_t(W * H), float(v.depth)), S(size_t(W * H), 0.02f);
+        DepthFrame f;
+        const double c = std::cos(v.yaw), s = std::sin(v.yaw);
+        // optical z -> world (c, s, 0), optical x -> world (s, -c, 0), optical y -> world -z
+        f.T_W_C.R << s, 0, c, -c, 0, s, 0, -1, 0;
+        f.T_W_C.t = core::Vec3(v.x, v.y, 1.0);
+        f.fx = 84, f.fy = 84, f.cx = 80, f.cy = 45, f.width = W, f.height = H, f.depth = Z.data(), f.sigma = S.data();
+        P.Integrate(0, int64_t(i), f);
+        ag[0].position = f.T_W_C.t;
+        if (i % 2 == 0) P.Plan(5.0 * (i + 1), ag, {});   // replans between views (cache in use)
+        ++i;
+    }
+    const Phase4Plan last = P.Plan(100.0, ag, {});
+    const TraversabilityMaps full = ComputeTraversability(P.Map(), P.Distance(), b.grid, prm.trav);
+    auto Same = [](const cv::Mat& a, const cv::Mat& b) {
+        return a.size() == b.size() && a.type() == b.type() && cv::countNonZero(a.reshape(1) != b.reshape(1)) == 0;
+    };
+    EXPECT_TRUE(Same(last.maps.trav_r, full.trav_r));
+    EXPECT_TRUE(Same(last.maps.trav_a, full.trav_a));
+    EXPECT_TRUE(Same(last.maps.trav_r_strict, full.trav_r_strict));
+    EXPECT_TRUE(Same(last.maps.slab, full.slab));
+    EXPECT_TRUE(Same(last.maps.clear_r, full.clear_r));
+    EXPECT_TRUE(Same(last.maps.clear_a, full.clear_a));
+    EXPECT_TRUE(Same(last.maps.risk, full.risk));
+    EXPECT_GT(cv::countNonZero(full.slab == kFree), 100) << "the views must observe free space, or this proves little";
+}

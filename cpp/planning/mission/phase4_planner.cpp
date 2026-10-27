@@ -160,8 +160,21 @@ Phase4Planner::Phase4Planner(const Phase4Briefing& b, const Phase4Params& p, int
 size_t Phase4Planner::Integrate(int agent, int64_t /*t_ns*/, const DepthFrame& f) {
     if (agent < 0 || agent >= Agents()) throw std::out_of_range("Phase4Planner::Integrate: agent " + std::to_string(agent));
     const std::vector<Idx3> dirty = map_.Integrate(f);
+    bool incremental = false;
     if (esdf_.Empty()) esdf_.Rebuild(map_);
-    else esdf_.Update(map_, dirty);
+    else incremental = esdf_.Update(map_, dirty);
+    if (!incremental || trav_cols_.Empty()) {
+        trav_dirty_.release();   // every column at the next PlanMaps
+    } else if (!dirty.empty() && !trav_dirty_.empty()) {
+        // A column reads the map/ESDF within TravColumnReach voxels of itself: mark that neighbourhood of each block.
+        const int m = TravColumnReach(esdf_, map_.Voxel());
+        const int cx0 = int(std::lround(b_.grid.ox / map_.Voxel())), cy0 = int(std::lround(b_.grid.oy / map_.Voxel()));
+        for (const auto& bk : dirty) {
+            const int c0 = std::max(bk.x * kBlockSide - m - cx0, 0), c1 = std::min((bk.x + 1) * kBlockSide - 1 + m - cx0, b_.grid.cols - 1);
+            const int r0 = std::max(bk.y * kBlockSide - m - cy0, 0), r1 = std::min((bk.y + 1) * kBlockSide - 1 + m - cy0, b_.grid.rows - 1);
+            if (c0 <= c1 && r0 <= r1) trav_dirty_(cv::Range(r0, r1 + 1), cv::Range(c0, c1 + 1)).setTo(1);
+        }
+    }
     if (!dirty.empty()) {
         Idx3 lo{1 << 30, 1 << 30, 1 << 30}, hi{-(1 << 30), -(1 << 30), -(1 << 30)};
         for (const auto& bk : dirty) {
@@ -243,7 +256,10 @@ Phase4Plan Phase4Planner::Plan(double t_s, const std::vector<Phase4AgentInput>& 
 }
 
 void Phase4Planner::PlanMaps(Phase4Plan* out) {
-    out->maps = ComputeTraversability(map_, esdf_, b_.grid, p_.trav);
+    // Bit-equal to ComputeTraversability (test): unchanged columns are reused, the whole-grid finish is redone.
+    UpdateTravColumns(map_, esdf_, b_.grid, p_.trav, trav_dirty_, &trav_cols_);
+    trav_dirty_ = cv::Mat::zeros(b_.grid.rows, b_.grid.cols, CV_8U);
+    out->maps = FinishTraversability(trav_cols_, b_.grid, map_.Voxel(), esdf_.DMax(), p_.trav);
     out->support = BodySupport(map_, b_.grid, p_.trav.responder, p_.support_band_lo, p_.support_band_hi);
     EgressWeights w = p_.egress;
     if (!p_.risk_calibrated) w.w_r = 0;   // invariant: the [PROXY] enters only after D112's bar

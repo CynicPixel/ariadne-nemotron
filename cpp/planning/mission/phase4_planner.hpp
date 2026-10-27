@@ -175,6 +175,8 @@ private:
     Phase4Params p_;
     TsdfMap map_;
     Esdf esdf_;
+    TravColumns trav_cols_;   // cached per-column traversability; only columns near new map changes are recomputed
+    cv::Mat trav_dirty_;      // CV_8U grid mask: columns to recompute at the next PlanMaps (empty = all)
     FrontierSet3D fr_;
     EgressPlanner egress_;
     std::vector<std::vector<core::Vec3>> track_;   // per agent
