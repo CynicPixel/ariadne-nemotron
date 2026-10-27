@@ -13,6 +13,7 @@
 // with the counters. Exits when both peers have closed.
 // ---------------------------------------------------------------------------
 #include "runtime/live/collab_worker_core.hpp"
+#include "runtime/live/cpu_affinity.hpp"
 #include "runtime/live/link_frame.hpp"
 
 #include <opencv2/core.hpp>
@@ -28,6 +29,7 @@ using namespace ariadne;
 namespace live = ariadne::runtime::live;
 
 int main(int argc, char** argv) {
+    ariadne::runtime::live::PinFromEnv("ARIADNE_CPUSET_COLLAB", "collab worker");   // before any thread (cpu_affinity.hpp)
     std::string socket_path, place_onnx, place_size = "640x360", aliked_onnx, lightglue_onnx, dnn_backend = "cv_dnn";
     int agent = 0, threads = 0;
     double keep_s = 120.0;

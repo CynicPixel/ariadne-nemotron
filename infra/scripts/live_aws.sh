@@ -145,6 +145,11 @@ cmd_run() {
   local uri="${ARIADNE_LIVE_PAYLOAD_URI:-}"
   [ -n "$uri" ] || uri="$(cmd_payload "$scene")"
   local script="$REPO_ROOT/build/live_payload/run-$(date -u +%Y%m%dT%H%M%SZ).sh"
+  local knobs="" v   # live.sh's optional CPU tuning knobs, forwarded only when set here
+  for v in ARIADNE_CPUSET_RT ARIADNE_CPUSET_SIM ARIADNE_CPUSET_RECON ARIADNE_CPUSET_MAIN ARIADNE_CPUSET_ESTIMATOR \
+           ARIADNE_CPUSET_ESTIMATOR_0 ARIADNE_CPUSET_ESTIMATOR_1 ARIADNE_CPUSET_COLLAB ARIADNE_RT_CV_THREADS ARIADNE_WORKER_CV_THREADS; do
+    if [ -n "${!v:-}" ]; then knobs+="$v=${!v} "; fi
+  done
   { prologue "$refs"; cat <<EOF
 export ARIADNE_GIT_COMMIT=$source_commit ARIADNE_GIT_DIRTY=$source_dirty ARIADNE_RT_MEM=${ARIADNE_RT_MEM:-6g}
 aws s3 cp $uri - | tar xz -C /tmp
@@ -161,7 +166,7 @@ ARIADNE_SPLAT=${ARIADNE_SPLAT:-0} ARIADNE_RECON_IMAGE=${ARIADNE_RECON_IMAGE:-ari
 ARIADNE_RECON_BACKEND=${ARIADNE_RECON_BACKEND:-cpu_init} ARIADNE_RECON_ITERS=${ARIADNE_RECON_ITERS:-} ARIADNE_RECON_BUDGET_MS=${ARIADNE_RECON_BUDGET_MS:-50} ARIADNE_RECON_DIAGNOSTICS=${ARIADNE_RECON_DIAGNOSTICS:-0} \
 ARIADNE_RT_MEM=${ARIADNE_RT_MEM:-6g} ARIADNE_PROFILE=${ARIADNE_PROFILE:-} ARIADNE_SAMPLER=${ARIADNE_SAMPLER:-} \
 ARIADNE_RT_GPU=${ARIADNE_RT_GPU:-0} \$( [ '${ARIADNE_RT_GPU:-0}' = 1 ] && echo ARIADNE_CORE_IMAGE=ariadne/core-gpu:dev ) \
-  infra/scripts/live.sh run $scene build/live/runs $end_s > \$R/live_run.log 2>&1; then live_rc=0; else live_rc=\$?; fi
+$knobs  infra/scripts/live.sh run $scene build/live/runs $end_s > \$R/live_run.log 2>&1; then live_rc=0; else live_rc=\$?; fi
 run=\$(find build/live/runs -mindepth 1 -maxdepth 1 -type d -name 'live-*' -printf '%T@ %p\\n' | sort -nr | head -1 | cut -d' ' -f2-)
 if [ -n "\$run" ]; then
   if [ '${ARIADNE_SKIP_REPLAY:-0}' = '1' ]; then

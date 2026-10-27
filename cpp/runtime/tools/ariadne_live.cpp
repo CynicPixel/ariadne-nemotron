@@ -27,6 +27,7 @@
 #include "collaboration/protocol/collab_node.hpp"
 #include "runtime/live/a1_planner.hpp"
 #include "runtime/live/agent_worker.hpp"
+#include "runtime/live/cpu_affinity.hpp"
 #include "runtime/live/collab_live.hpp"
 #include "runtime/live/lockstep_gate.hpp"
 #include "runtime/live/sensor_horizon.hpp"
@@ -431,6 +432,9 @@ core::SE3 GetSe3(const uint8_t*& q) {
 int RunEstimatorWorker(const std::string& scene, int agent, const std::string& socket_path,
                        const std::string& collab_socket, bool lens_on, bool latest_stereo, tools::StereoVoArgs va, const std::string& out,
                        int argc, char** argv) {
+    live::PinFromEnv(("ARIADNE_CPUSET_ESTIMATOR_" + std::to_string(agent)).c_str(), "estimator");   // per agent first,
+    if (!std::getenv(("ARIADNE_CPUSET_ESTIMATOR_" + std::to_string(agent)).c_str()))                // else the shared set
+        live::PinFromEnv("ARIADNE_CPUSET_ESTIMATOR", "estimator");
     // D228: 5 OpenCV threads per worker. The estimator is thread-count-invariant (A2: 16/5/2 bit-identical) and a
     // 3-worker fleet at the default pool thrashes the box (cpu PSI 26 % -> 1.2 % at 5 on c7i.4xlarge, job 46).
     {
@@ -704,6 +708,12 @@ int main(int argc, char** argv) {
             va.perception_config.empty() || va.slam_config.empty() || link_path.empty() == replay_path.empty()) {
             throw std::invalid_argument("usage: ariadne_live --scene S --perception-config P --slam-config S "
                                         "--mission-config M --live-config L --out DIR (--link SOCK | --replay MCAP)");
+        }
+        // Live tuning knobs (cpu_affinity.hpp): pin the main process before any thread exists, cap its OpenCV pool.
+        live::PinFromEnv("ARIADNE_CPUSET_MAIN", "ariadne_live main");
+        if (const char* e = std::getenv("ARIADNE_RT_CV_THREADS")) {
+            cv::setNumThreads(std::max(1, std::atoi(e)));
+            std::fprintf(stderr, "[threads] ariadne_live main: OpenCV pool %d (ARIADNE_RT_CV_THREADS)\n", cv::getNumThreads());
         }
         const bool is_live = !link_path.empty();
         const LiveConfig lc = LoadLive(live_cfg_path);

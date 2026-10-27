@@ -39,6 +39,9 @@ JOBS="${ARIADNE_BUILD_JOBS:-2}"
 U="$(id -u):$(id -g)"
 log() { printf '[live %s] %s\n' "$(date -u +%H:%M:%S)" "$*" >&2; }
 
+cpuset_arg() {   # VAR -> "--cpuset-cpus LIST" when $VAR is set (a container-level CPU set, docker run)
+  if [ -n "${!1:-}" ]; then printf -- '--cpuset-cpus %s' "${!1}"; fi
+}
 render_args() {
   if docker info --format '{{json .Runtimes}}' 2>/dev/null | grep -q '"nvidia"'; then
     echo "--gpus all -e ARIADNE_RENDER_MODE=nvidia-egl"
@@ -200,7 +203,7 @@ cmd_run() {
     elif [ "$recon_backend" != cpu_init ]; then
       log "unsupported reconstruction backend: $recon_backend"; exit 2
     fi
-    CONTAINERS+=("$(docker run -d --name "ariadne-live-$id-recon" "${recon_gpu[@]}" \
+    CONTAINERS+=("$(docker run -d --name "ariadne-live-$id-recon" "${recon_gpu[@]}" $(cpuset_arg ARIADNE_CPUSET_RECON) \
       --memory="${ARIADNE_RECON_MEM:-4g}" --memory-swap="${ARIADNE_RECON_MEM:-4g}" \
       -u "$U" -e HOME=/tmp -e OMP_NUM_THREADS=2 -e MKL_NUM_THREADS=2 \
       -v "$REPO_ROOT":/work -w /work/python "${ARIADNE_RECON_IMAGE:-ariadne-recon:1}" \
@@ -231,7 +234,24 @@ cmd_run() {
   local rt_gpu=() rt_ld=()
   [ "${ARIADNE_RT_GPU:-0}" = 1 ] && rt_gpu=(--gpus all)
   [ -d "$REPO_ROOT/build/ort/lib" ] && rt_ld=(-e LD_LIBRARY_PATH=/work/build/ort/lib)
-  CONTAINERS+=("$(docker run -d --name "ariadne-live-$id-rt" "${rt_gpu[@]}" "${rt_ld[@]}" --memory="${ARIADNE_RT_MEM:-6g}" --memory-swap="${ARIADNE_RT_MEM:-6g}" -u "$U" -v "$REPO_ROOT":/work -w /work "${recon_env[@]}" \
+  # CPU tuning knobs (all optional; unset = as before). Container level: ARIADNE_CPUSET_RT/_SIM/_RECON = docker
+  # --cpuset-cpus. Inside the runtime container (cpu_affinity.hpp, applied at process start, inherited by later
+  # threads): ARIADNE_CPUSET_MAIN (mission thread, planner workers, the main OpenCV pool), ARIADNE_CPUSET_ESTIMATOR
+  # or ARIADNE_CPUSET_ESTIMATOR_<k>, ARIADNE_CPUSET_COLLAB. A child with no set of its own inherits MAIN's.
+  # Pool sizes: ARIADNE_RT_CV_THREADS (main process, default = the cores it sees), ARIADNE_WORKER_CV_THREADS
+  # (estimators, default 5); collab workers keep collab.worker_threads (their ALIKED output depends on it).
+  local rt_knobs=()
+  for v in ARIADNE_CPUSET_MAIN ARIADNE_CPUSET_ESTIMATOR ARIADNE_CPUSET_ESTIMATOR_0 ARIADNE_CPUSET_ESTIMATOR_1 \
+           ARIADNE_CPUSET_COLLAB ARIADNE_RT_CV_THREADS ARIADNE_WORKER_CV_THREADS; do
+    if [ -n "${!v:-}" ]; then rt_knobs+=(-e "$v=${!v}"); fi
+  done
+  {   # what this run applied (empty file = all defaults), for the evidence record
+    for v in ARIADNE_CPUSET_RT ARIADNE_CPUSET_SIM ARIADNE_CPUSET_RECON ARIADNE_CPUSET_MAIN ARIADNE_CPUSET_ESTIMATOR \
+             ARIADNE_CPUSET_ESTIMATOR_0 ARIADNE_CPUSET_ESTIMATOR_1 ARIADNE_CPUSET_COLLAB ARIADNE_RT_CV_THREADS ARIADNE_WORKER_CV_THREADS; do
+      if [ -n "${!v:-}" ]; then echo "$v=${!v}"; fi
+    done
+  } > "$REPO_ROOT/$run/cpu_knobs.txt"
+  CONTAINERS+=("$(docker run -d --name "ariadne-live-$id-rt" "${rt_gpu[@]}" "${rt_ld[@]}" $(cpuset_arg ARIADNE_CPUSET_RT) "${rt_knobs[@]}" --memory="${ARIADNE_RT_MEM:-6g}" --memory-swap="${ARIADNE_RT_MEM:-6g}" -u "$U" -v "$REPO_ROOT":/work -w /work "${recon_env[@]}" \
     -e ARIADNE_PROFILE="${ARIADNE_PROFILE:-0}" \
     -e ARIADNE_GIT_COMMIT="$runtime_commit" \
     -e ARIADNE_GIT_DIRTY="$runtime_dirty" \
@@ -246,7 +266,7 @@ cmd_run() {
   local latest_stereo=0
   if grep -q '^mode: *demo' "$REPO_ROOT/$live_cfg"; then latest_stereo=1; fi
   # shellcheck disable=SC2046
-  CONTAINERS+=("$(docker run -d --name "ariadne-live-$id-sim" -u "$U" $(render_args) -v "$REPO_ROOT":/work -w /work \
+  CONTAINERS+=("$(docker run -d --name "ariadne-live-$id-sim" -u "$U" $(render_args) $(cpuset_arg ARIADNE_CPUSET_SIM) -v "$REPO_ROOT":/work -w /work \
     -e GZ_SIM_SYSTEM_PLUGIN_PATH=/work/build/sim-plugins -e HOME=/tmp -e ARIADNE_LIVE_LATEST="$latest_stereo" \
     -e GZ_TRANSPORT_RCVHWM=0 -e GZ_TRANSPORT_SNDHWM=0 \
     "$SIM_IMAGE" bash -c "source /opt/ros/jazzy/setup.bash && source build/ros2/install/setup.bash && \
