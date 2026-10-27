@@ -204,6 +204,7 @@ struct NbvPlan {
     std::vector<std::string> notes;            // missing producers etc., for the trace
     int targets[5] = {0, 0, 0, 0, 0};          // per generator A..E
     std::string tare;                          // kTare: "local k" | "global m" | "" (what scheduled the first option)
+    std::vector<std::pair<std::string, double>> stage_ms;   // wall ms per stage, plus option counts (profiling only)
 };
 
 NbvPlan PlanNbv(const NbvInputs& in, int agent, const AgentState& st, const NbvParams& p);

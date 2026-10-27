@@ -112,6 +112,7 @@ struct Phase4Plan {
     EgressReplan egress;
     std::vector<Phase4AgentPlan> agents;   // one per agent (Plan sizes it N)
     std::vector<int> joint;                // index into agents[a].nbv.options, -1 none; exactly-once by task_id
+    std::vector<std::pair<std::string, double>> stage_ms;   // PlanOwn's wall ms per stage (profiling; never read back)
 };
 
 /// Filter and rescale one agent's options by the active region directives and the mover's refusals (in place).

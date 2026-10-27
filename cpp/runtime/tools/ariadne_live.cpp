@@ -51,6 +51,7 @@
 #include <cstdlib>
 #include <deque>
 #include <fstream>
+#include <future>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -74,6 +75,9 @@ struct LiveConfig {
            max_standoff_m = 0, refused_radius_m = 0;
     double autonomous_threshold = 1.01;   // §23 risk gate (AGENTIC_7 D158); > 1 = no gate
     double llm_timeout_s = 0;              // chooser llm: wall seconds to wait for the orchestrator
+    double command_max_age_s = 0;          // live demo: a decision older than this (sim s, clock at send - T) is not
+                                           // sent; the agent keeps its current motion. 0 = off. A safety cap, not a
+                                           // latency fix: the age itself comes from decision time
     bool face_frontier = true;
     bool lockstep = false;                 // D165: gz paused at every barrier until the commands are applied
     int lockstep_substep_ms = 500;         // D166: gz paced toward each barrier in sub-steps of this much sim time,
@@ -132,6 +136,8 @@ LiveConfig LoadLive(const std::string& path) {
     c.escape_m = n["command"]["escape_m"].as<double>();
     c.max_standoff_m = n["command"]["max_standoff_m"].as<double>();
     c.refused_radius_m = n["command"]["refused_radius_m"].as<double>();
+    if (n["command"]["max_age_s"]) c.command_max_age_s = n["command"]["max_age_s"].as<double>();
+    if (c.command_max_age_s < 0) throw std::invalid_argument("live config: command.max_age_s >= 0");
     c.hold_back_ms = n["reorder"]["hold_back_ms"].as<int>();
     c.telemetry_hz = n["telemetry_hz"].as<double>();
     if (n["lockstep"]) c.lockstep = n["lockstep"].as<bool>();
@@ -921,6 +927,7 @@ int main(int argc, char** argv) {
             }
         };
 
+        std::string profile_extra;   // more ,"key":value pairs for the next profile line (backlog, plan stages)
         const auto write_profile = [&](int64_t T, const char* kind) {
             if (!profile) return;
             pmark(8);
@@ -934,7 +941,8 @@ int main(int argc, char** argv) {
                << ",\"ms\":{\"integrate\":" << ms(0, 1)
                << ",\"radio\":" << ms(1, 2) << ",\"drain\":" << ms(2, 3) << ",\"broker\":" << ms(3, 4)
                << ",\"plan_fork\":" << ms(4, 5) << ",\"sends\":" << ms(5, 6) << ",\"merge\":" << ms(6, 7)
-               << ",\"decide_command\":" << ms(7, 8) << ",\"total\":" << ms(0, 8) << "}}";
+               << ",\"decide_command\":" << ms(7, 8) << ",\"total\":" << ms(0, 8) << "}" << profile_extra << "}";
+            profile_extra.clear();
             profile->Put(po.str());
         };
 
@@ -963,6 +971,9 @@ int main(int argc, char** argv) {
 
         std::deque<AgentLane> lanes(static_cast<size_t>(NA));
         const bool latest_stereo = is_live && lc.demo && !lc.lockstep;
+        // Live demo with keyframes integrated at delivery: the decision does not wait for the integration backlog and
+        // its plans run ahead of it (agent_worker.hpp PostUrgent). Replay and lockstep keep the post-order barrier.
+        const bool plan_ahead = latest_stereo && ma && ma->eager_map;
         Lines ingest_log(run_dir / "sensor_ingest.jsonl");
         for (const auto& a : mj["agents"]) {
             const int k = a["agent"].as<int>();
@@ -1543,7 +1554,7 @@ int main(int argc, char** argv) {
             fs::create_directories(run_dir / "approvals");
             chooser = std::make_unique<ChooserLink>(chooser_socket);
         }
-        int replans = 0, commands_sent = 0, answer_timeouts = 0;
+        int replans = 0, commands_sent = 0, answer_timeouts = 0, commands_expired = 0;
         // Operator directives (AGENTIC_7 §0b): recorded inputs. Live: <run>/directives_inbox/*.json, taken at the
         // replan barrier in name order, stamped and appended to directives.jsonl. Replay: that file, verbatim.
         std::vector<mis::Directive> directives;
@@ -1675,6 +1686,7 @@ int main(int argc, char** argv) {
             }
             const auto barrier_wall = std::chrono::steady_clock::now();
             pmark(0);
+            profile_extra.clear();
             if (live::IntegrateAtDecision(lc.demo, bool(ma))) {   // per-agent maps are owned by this mission thread; demo must feed them too
                 std::vector<KfRec> batch;
                 for (auto& L : lanes) {
@@ -1713,7 +1725,16 @@ int main(int argc, char** argv) {
                     if (shadow) shadow->Integrate(ki.agent, ki.t_ns, live::ToDepthFrame(ki));
                     ++integrated[r.agent];
                 }
-                if (ma) {   // the decision sees every keyframe before T (and, demo, whatever was delivered since)
+                if (ma && plan_ahead) {   // live demo: plan on the map as it stands; the backlog keeps integrating
+                    if (profile) {   // keyframes delivered but not yet integrated, per agent
+                        std::ostringstream bl;
+                        bl << ",\"backlog\":[";
+                        for (size_t k = 0; k < ma->workers.size(); ++k) bl << (k ? "," : "") << ma->workers[k].Pending();
+                        bl << "]";
+                        profile_extra += bl.str();
+                    }
+                    rays += ma->rays_async.exchange(0);
+                } else if (ma) {   // the decision sees every keyframe before T (and, demo, whatever was delivered since)
                     for (auto& w : ma->workers) w.Wait();
                     rays += ma->rays_async.exchange(0);
                 }
@@ -1937,8 +1958,17 @@ int main(int argc, char** argv) {
                 std::vector<std::vector<std::pair<int, core::SubmapPatchValue>>> patches_out;
                 patches_out.resize(size_t(NA));
                 ma_picks.resize(size_t(NA));
+                std::vector<std::vector<std::pair<std::string, double>>> plan_stage_ms;
+                plan_stage_ms.resize(size_t(NA));
                 {
-                    for (int k = 0; k < NA; ++k) ma->workers[size_t(k)].Post([&, k] {
+                    // Live demo: each plan jumps its worker's integration backlog (agent_worker.hpp PostUrgent).
+                    std::vector<std::future<void>> urgent;
+                    const auto fork_t0 = std::chrono::steady_clock::now();
+                    const auto post_plan = [&](int k, std::function<void()> job) {
+                        if (plan_ahead) urgent.push_back(ma->workers[size_t(k)].PostUrgent(std::move(job)));
+                        else ma->workers[size_t(k)].Post(std::move(job));
+                    };
+                    for (int k = 0; k < NA; ++k) post_plan(k, [&, k] {
                         const auto comp = ma_comp(k);
                         const auto component = allocation_component(k);
                         const uint32_t epoch = component.epoch;
@@ -1955,9 +1985,21 @@ int main(int argc, char** argv) {
                             const auto it = ma->linked.find(ac::AgentId(k));
                             return it != ma->linked.end() && it->second;
                         }();
+                        const auto job_t0 = std::chrono::steady_clock::now();
+                        const auto since = [](std::chrono::steady_clock::time_point t) {
+                            return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t).count();
+                        };
                         plans[size_t(k)] = ma->planners[size_t(k)].PlanOwnFor(ctx, k, peers,
                                                                               &ma->layers[size_t(k)].KnownMask(), lkd);
                         const auto& lp = ma->planners[size_t(k)].LastPlan();
+                        if (profile) {
+                            plan_stage_ms[size_t(k)] = lp.stage_ms;
+                            plan_stage_ms[size_t(k)].emplace_back("plan_own_for", since(job_t0));
+                            // the wait for worker_k (the integration in progress; with Post, the whole backlog)
+                            plan_stage_ms[size_t(k)].emplace_back(
+                                "start_wait", std::chrono::duration<double, std::milli>(job_t0 - fork_t0).count());
+                        }
+                        const auto export_t0 = std::chrono::steady_clock::now();
                         ma->exporters[size_t(k)].Update(lp.maps);
                         for (int j = 0; j <= NA; ++j) {
                             if (j == k) continue;
@@ -1966,6 +2008,7 @@ int main(int argc, char** argv) {
                             if (!patch.blocks.empty())
                                 patches_out[size_t(k)].push_back({j, live::ToWire(patch, core::FrameTag{ac::AgentId(k), 0})});
                         }
+                        if (profile) plan_stage_ms[size_t(k)].emplace_back("export", since(export_t0));
                         bids_out[size_t(k)] = multi::BuildBid(k, epoch, ++ma->bid_seq[size_t(k)], T,
                                                               lp.agents[size_t(k)].nbv, ma->max_options, {});
                         // (6, in-thread) the pick from the newest consensus RECEIVED by T - reads only this agent's state
@@ -1982,7 +2025,26 @@ int main(int argc, char** argv) {
                                                               ma->broker.range_m, ma->tau_s)
                             : multi::ApplyConsensus(c, k, epoch, T, ma->timeout_s, opts, ma->broker.r_same);
                     });
-                    for (auto& w : ma->workers) w.Wait();
+                    if (plan_ahead) {   // every plan finishes before a failure leaves this scope (they capture &)
+                        for (auto& f : urgent) f.wait();
+                        for (auto& f : urgent) f.get();
+                    } else {
+                        for (auto& w : ma->workers) w.Wait();
+                    }
+                }
+                if (profile) {   // per agent: Phase4Planner's own stage split of its plan (PlanOwn)
+                    std::ostringstream ps;
+                    ps.precision(6);
+                    ps << ",\"plan_stages\":[";
+                    for (int k = 0; k < NA; ++k) {
+                        ps << (k ? "," : "") << "{";
+                        for (size_t i = 0; i < plan_stage_ms[size_t(k)].size(); ++i)
+                            ps << (i ? "," : "") << "\"" << plan_stage_ms[size_t(k)][i].first
+                               << "\":" << plan_stage_ms[size_t(k)][i].second;
+                        ps << "}";
+                    }
+                    ps << "]";
+                    profile_extra += ps.str();
                 }
                 pmark(5);   // plan fork-join done
                 // (5) Sends, serial in ascending id: the seeded link sees one deterministic order, and CommsNode
@@ -2538,8 +2600,17 @@ int main(int argc, char** argv) {
                 o << "}" << choice[k] << "}";
                 trace.Put(o.str());
                 telemetry.Put("{\"type\":\"decision\",\"record\":" + o.str() + "}");
+                // Command expiry (live demo only): too old by the sim clock at send time -> not sent, logged.
+                const int64_t clock_now = live_clock_ns.load();
+                const bool expired = latest_stereo && lc.command_max_age_s > 0 && clock_now >= 0 &&
+                                     double(clock_now - T) * 1e-9 > lc.command_max_age_s;
                 commands.Put("{\"agent\":" + std::to_string(k) + ",\"stamp_ns\":" + std::to_string(T) + ",\"poses\":" +
-                             std::to_string(cmd.poses.size()) + "}");
+                             std::to_string(cmd.poses.size()) +
+                             (expired ? ",\"expired\":true,\"clock_ns_at_send\":" + std::to_string(clock_now) : "") + "}");
+                if (expired) {
+                    ++commands_expired;
+                    continue;
+                }
                 SendCommand(k, cmd);
                 ++commands_sent;
                 sent_at_T[k] = true;
@@ -2643,7 +2714,7 @@ int main(int argc, char** argv) {
             << "\nlive_config: " << lc.name << "\nmission_config: " << mc.name << "\nend_s: " << lc.end_s
             << "\nconsumed: {messages: " << rec.count() << ", digest_fnv1a64: '" << std::hex << rec.digest() << std::dec
             << "'}\nreplans: " << replans << "\ncommands_sent: " << (is_live ? commands_sent : 0)
-            << "\ncommands_decided: " << commands_sent << "\nlockstep: " << (lc.lockstep ? "true" : "false")
+            << "\ncommands_decided: " << commands_sent + commands_expired << "\ncommands_expired: " << commands_expired << "\nlockstep: " << (lc.lockstep ? "true" : "false")
             << "\nestimator_processes: " << (lc.estimator_processes ? "true" : "false")
             << "\nplanner: " << planner_name << "\nshadow_map: " << (shadow ? "p4slab (Phase 4 TSDF)" : "none")
             << "\nreorder_released_on_timeout: " << reorder_timeouts

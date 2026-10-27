@@ -6,6 +6,7 @@
 #include <opencv2/imgproc.hpp>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <limits>
 #include <map>
@@ -14,6 +15,19 @@
 #include <string>
 
 namespace ariadne::planning {
+
+namespace {
+// Appends (stage, wall ms since the previous lap) to the plan's profile split. Never read by planning.
+struct StageClock {
+    std::vector<std::pair<std::string, double>>* out;
+    std::chrono::steady_clock::time_point t = std::chrono::steady_clock::now();
+    void Lap(const char* stage) {
+        const auto now = std::chrono::steady_clock::now();
+        out->emplace_back(stage, std::chrono::duration<double, std::milli>(now - t).count());
+        t = now;
+    }
+};
+}  // namespace
 
 bool RegionDirective::Covers(double px, double py) const {
     bool in = false;
@@ -256,15 +270,20 @@ Phase4Plan Phase4Planner::Plan(double t_s, const std::vector<Phase4AgentInput>& 
 }
 
 void Phase4Planner::PlanMaps(Phase4Plan* out) {
+    StageClock clk{&out->stage_ms};
     // Bit-equal to ComputeTraversability (test): unchanged columns are reused, the whole-grid finish is redone.
     UpdateTravColumns(map_, esdf_, b_.grid, p_.trav, trav_dirty_, &trav_cols_);
     trav_dirty_ = cv::Mat::zeros(b_.grid.rows, b_.grid.cols, CV_8U);
+    clk.Lap("trav_cols");
     out->maps = FinishTraversability(trav_cols_, b_.grid, map_.Voxel(), esdf_.DMax(), p_.trav);
+    clk.Lap("trav_finish");
     out->support = BodySupport(map_, b_.grid, p_.trav.responder, p_.support_band_lo, p_.support_band_hi);
+    clk.Lap("support");
     EgressWeights w = p_.egress;
     if (!p_.risk_calibrated) w.w_r = 0;   // invariant: the [PROXY] enters only after D112's bar
     const cv::Mat pen = EgressPenalty(out->maps.clear_r, out->support, out->maps.risk, w);
     out->egress = egress_.Replan(out->maps.trav_r, pen, out->support, out->maps.risk);
+    clk.Lap("egress");
 }
 
 Phase4AgentPlan Phase4Planner::PlanAgent(double t_s, int a, const Phase4AgentInput& in, std::vector<PeerKeyframe> peers,
@@ -313,8 +332,12 @@ Phase4Plan Phase4Planner::PlanOwn(double t_s, int self, const Phase4AgentInput& 
     out.allocation.method = "broker";   // allocated by the component's broker over TASK_BID (D175), not here
     PlanMaps(&out);
     if (!in.active) return out;
+    StageClock clk{&out.stage_ms};
     const CoarseLayer coarse = BuildCoarse(map_);
+    clk.Lap("coarse");
     out.agents[size_t(self)] = PlanAgent(t_s, self, in, peers, peer_known, true, dirs, out, coarse);
+    clk.Lap("agent");   // = the nbv.* split below + plan space, keep-out and directives
+    for (const auto& [stage, ms] : out.agents[size_t(self)].nbv.stage_ms) out.stage_ms.emplace_back("nbv." + stage, ms);
     return out;
 }
 

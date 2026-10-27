@@ -15,6 +15,7 @@ command:
   escape_m: 0.5
   max_standoff_m: 2.0
   refused_radius_m: 0.5
+  max_age_s: 15.0          # a decision older than this at send (sim s) is dropped: safety cap only
 risk_gate:
   autonomous_threshold: 0.5
 llm:

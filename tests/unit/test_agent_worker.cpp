@@ -2,6 +2,7 @@
 #include <gtest/gtest.h>
 #include <atomic>
 #include <chrono>
+#include <future>
 #include <stdexcept>
 #include <thread>
 #include <vector>
@@ -49,6 +50,34 @@ TEST(AgentWorker, DestructorDrainsPostedJobs) {
         for (int i = 0; i < 50; ++i) w.Post([&] { std::this_thread::yield(); ++n; });
     }
     EXPECT_EQ(n.load(), 50);
+}
+
+TEST(AgentWorker, UrgentJobRunsAfterTheJobInProgressAheadOfTheBacklog) {
+    AgentWorker w;
+    std::vector<int> seen;   // worker thread only
+    std::promise<void> started, release;
+    std::shared_future<void> go = release.get_future().share();
+    w.Post([&] { started.set_value(); go.wait(); seen.push_back(0); });   // the integration in progress
+    started.get_future().wait();
+    for (int i = 1; i <= 5; ++i) w.Post([&, i] { seen.push_back(i); });   // the backlog
+    EXPECT_EQ(w.Pending(), 6u);
+    std::future<void> plan = w.PostUrgent([&] { seen.push_back(-1); });
+    std::future<void> plan2 = w.PostUrgent([&] { seen.push_back(-2); });
+    release.set_value();
+    plan.get();
+    plan2.get();
+    w.Wait();
+    EXPECT_EQ(seen, (std::vector<int>{0, -1, -2, 1, 2, 3, 4, 5}));
+    EXPECT_EQ(w.Pending(), 0u);
+}
+
+TEST(AgentWorker, UrgentJobCarriesItsOwnOrAnEarlierError) {
+    AgentWorker w;
+    std::future<void> bad = w.PostUrgent([] { throw std::runtime_error("plan failed"); });
+    EXPECT_THROW(bad.get(), std::runtime_error);
+    std::future<void> later = w.PostUrgent([] {});
+    EXPECT_THROW(later.get(), std::runtime_error);   // skipped: the worker is poisoned, as for FIFO jobs
+    EXPECT_THROW(w.Wait(), std::runtime_error);
 }
 
 TEST(AgentWorker, WorkersRunInParallel) {
