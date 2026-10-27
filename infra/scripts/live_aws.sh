@@ -197,7 +197,8 @@ cmd_replay_s3() {   # S3_RUN_TARBALL SCENE - replay an EXISTING recording in-reg
   # ARIADNE_PROFILE / ARIADNE_REPLAY_PASSES are passed to live.sh replay.
   local tarball="$1" scene="$2" rec="${ARIADNE_REPLAY_RECORDING_URI:-}"
   local refs; refs="$(cmd_push)"
-  local uri; uri="$(cmd_payload "$scene")"
+  local uri="${ARIADNE_LIVE_PAYLOAD_URI:-}"   # as cmd_run: reuse an uploaded payload across capacity retries
+  [ -n "$uri" ] || uri="$(cmd_payload "$scene")"
   local script="$REPO_ROOT/build/live_payload/replays3-$(date -u +%Y%m%dT%H%M%SZ).sh"
   { prologue "$refs"; cat <<EOF
 aws s3 cp $uri - | tar xz -C /tmp
