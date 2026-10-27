@@ -225,7 +225,13 @@ cmd_run() {
   python3 "$REPO_ROOT/infra/scripts/live_identity.py" record --run "$REPO_ROOT/$run" \
     --binary "$REPO_ROOT/build/docker/cpp/runtime/ariadne_live" --image "$runtime_image" \
     --commit "$runtime_commit" --dirty "$runtime_dirty"
-  CONTAINERS+=("$(docker run -d --name "ariadne-live-$id-rt" --memory="${ARIADNE_RT_MEM:-6g}" --memory-swap="${ARIADNE_RT_MEM:-6g}" -u "$U" -v "$REPO_ROOT":/work -w /work "${recon_env[@]}" \
+  # ARIADNE_RT_GPU=1: the runtime (and the collab workers it forks) gets the GPU, for collab.dnn_backend ort_cuda;
+  # run it with ARIADNE_CORE_IMAGE=ariadne/core-gpu:dev (CUDA + cuDNN runtime). build/ort/lib = the ONNX Runtime
+  # libraries of an ARIADNE_WITH_ORT build, shipped beside the binary.
+  local rt_gpu=() rt_ld=()
+  [ "${ARIADNE_RT_GPU:-0}" = 1 ] && rt_gpu=(--gpus all)
+  [ -d "$REPO_ROOT/build/ort/lib" ] && rt_ld=(-e LD_LIBRARY_PATH=/work/build/ort/lib)
+  CONTAINERS+=("$(docker run -d --name "ariadne-live-$id-rt" "${rt_gpu[@]}" "${rt_ld[@]}" --memory="${ARIADNE_RT_MEM:-6g}" --memory-swap="${ARIADNE_RT_MEM:-6g}" -u "$U" -v "$REPO_ROOT":/work -w /work "${recon_env[@]}" \
     -e ARIADNE_PROFILE="${ARIADNE_PROFILE:-0}" \
     -e ARIADNE_GIT_COMMIT="$runtime_commit" \
     -e ARIADNE_GIT_DIRTY="$runtime_dirty" \
@@ -338,8 +344,10 @@ cmd_replay() {
   python3 "$REPO_ROOT/infra/scripts/live_identity.py" replay --run "$REPO_ROOT/$run" \
     --binary "$REPO_ROOT/build/docker/cpp/runtime/ariadne_live" \
     --image "$(docker image inspect "$CORE_IMAGE" --format '{{.Id}}')"
+  local rp_ld=()
+  [ -d "$REPO_ROOT/build/ort/lib" ] && rp_ld=(-e LD_LIBRARY_PATH=/work/build/ort/lib)
   for i in 1 2; do
-    docker run --rm --memory="${ARIADNE_RT_MEM:-4g}" --memory-swap="${ARIADNE_RT_MEM:-4g}" -u "$U" -v "$REPO_ROOT":/work -w /work \
+    docker run --rm "${rp_ld[@]}" --memory="${ARIADNE_RT_MEM:-4g}" --memory-swap="${ARIADNE_RT_MEM:-4g}" -u "$U" -v "$REPO_ROOT":/work -w /work \
       --env-file "$REPO_ROOT/$run/replay_identity.env" "$CORE_IMAGE" build/docker/cpp/runtime/ariadne_live \
       --scene "$scene" --perception-config "$perception_cfg" --slam-config "$slam_cfg" "${imu_noise_arg[@]}" \
       --mission-config "$mission_cfg" --live-config "$cfg" \

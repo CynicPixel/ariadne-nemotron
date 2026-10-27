@@ -78,6 +78,7 @@ cmd_payload() {   # SCENE... (one or more scene directories)
   # tree sync never ships them; the collab run needs them at the configured relative paths).
   [ -f "$REPO_ROOT/build/docker/cpp/runtime/ariadne_collab_worker" ] && extra+=(build/docker/cpp/runtime/ariadne_collab_worker)
   [ -d "$REPO_ROOT/.cache/models" ] && extra+=(.cache/models)
+  [ -d "$REPO_ROOT/build/ort/lib" ] && extra+=(build/ort/lib)   # ONNX Runtime of an ARIADNE_WITH_ORT build
   (cd "$REPO_ROOT" && tar chf - build/docker/cpp/runtime/ariadne_live build/sim-plugins/libariadne_kinematic_mover.so \
      build/ros2/install "${extra[@]}" "$@") | tar xf - -C "$stage/p"
   (cd "$stage/p" && find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS)
@@ -150,12 +151,16 @@ aws s3 cp $uri - | tar xz -C /tmp
 (cd /tmp/p && sha256sum -c --quiet SHA256SUMS) && echo "payload sha256 OK" > \$R/payload_check.txt
 cp -a /tmp/p/. . && cp /tmp/p/SHA256SUMS \$R/
 mkdir -p build/live/runs
+if [ '${ARIADNE_RT_GPU:-0}' = 1 ]; then   # the GPU runtime image: core-dev + CUDA 12.8 runtime + cuDNN 9
+  docker build -q -f infra/docker/core-gpu.Dockerfile -t ariadne/core-gpu:dev . > \$R/core_gpu_image.txt 2>&1
+fi
 if env ARIADNE_LOCKSTEP=${ARIADNE_LOCKSTEP:-} ARIADNE_LIVE_CONFIG=${ARIADNE_LIVE_CONFIG:-} ARIADNE_PLANNER_CONFIG=${ARIADNE_PLANNER_CONFIG:-} \
 ARIADNE_PERCEPTION_CONFIG=${ARIADNE_PERCEPTION_CONFIG:-} ARIADNE_SLAM_CONFIG=${ARIADNE_SLAM_CONFIG:-} ARIADNE_IMU_NOISE_CONFIG=${ARIADNE_IMU_NOISE_CONFIG:-} ARIADNE_MISSION_CONFIG=${ARIADNE_MISSION_CONFIG:-} \
 ARIADNE_SHADOW_MAP_CONFIG=${ARIADNE_SHADOW_MAP_CONFIG:-} \
 ARIADNE_SPLAT=${ARIADNE_SPLAT:-0} ARIADNE_RECON_IMAGE=${ARIADNE_RECON_IMAGE:-ariadne-recon:1} \
 ARIADNE_RECON_BACKEND=${ARIADNE_RECON_BACKEND:-cpu_init} ARIADNE_RECON_ITERS=${ARIADNE_RECON_ITERS:-} ARIADNE_RECON_BUDGET_MS=${ARIADNE_RECON_BUDGET_MS:-50} ARIADNE_RECON_DIAGNOSTICS=${ARIADNE_RECON_DIAGNOSTICS:-0} \
 ARIADNE_RT_MEM=${ARIADNE_RT_MEM:-6g} ARIADNE_PROFILE=${ARIADNE_PROFILE:-} ARIADNE_SAMPLER=${ARIADNE_SAMPLER:-} \
+ARIADNE_RT_GPU=${ARIADNE_RT_GPU:-0} \$( [ '${ARIADNE_RT_GPU:-0}' = 1 ] && echo ARIADNE_CORE_IMAGE=ariadne/core-gpu:dev ) \
   infra/scripts/live.sh run $scene build/live/runs $end_s > \$R/live_run.log 2>&1; then live_rc=0; else live_rc=\$?; fi
 run=\$(find build/live/runs -mindepth 1 -maxdepth 1 -type d -name 'live-*' -printf '%T@ %p\\n' | sort -nr | head -1 | cut -d' ' -f2-)
 if [ -n "\$run" ]; then
