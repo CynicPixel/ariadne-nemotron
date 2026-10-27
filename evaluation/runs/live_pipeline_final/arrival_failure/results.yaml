@@ -1,0 +1,26 @@
+mission_error: true   # the loop failed; see stderr - artifacts above the failure are valid
+# ariadne_live results (design LIVE_RUNTIME_L1). Generated; do not hand-edit.
+mode: live-demo
+scene_id: 89e61fecbb277f69
+live_config: live_demo_final_profile_1500
+mission_config: mission_v1
+end_s: 100
+consumed: {messages: 53940, digest_fnv1a64: 'ce2d5065cd842543'}
+replans: 6
+commands_sent: 12
+commands_decided: 12
+lockstep: false
+estimator_processes: true
+planner: a1_phase4:ariadne +multiagent(plain,ideal)
+shadow_map: none
+reorder_released_on_timeout: 0
+reorder_released_out_of_order: 51344
+unrouted_messages: 0
+answer_timeouts: 0
+refused_goals: 0
+wall_s: 80.976
+end_to_end_rtf: 1.23493   # sim seconds per wall second, whole run incl. startup; gz's own view is gz_stats.jsonl
+agents:
+  - {agent: 0, frames: 18, keyframes: 10, unpaired_frames_dropped: 0, keyframes_integrated: 10, image_queue_max_depth: 0, track_mean_ms: 2591.79, track_max_ms: 17603, lock_mean_ms: 0.000648389, lock_max_ms: 0.00115, queue_wait_mean_ms: 0.0227599}
+  - {agent: 1, frames: 19, keyframes: 10, unpaired_frames_dropped: 0, keyframes_integrated: 9, image_queue_max_depth: 0, track_mean_ms: 2575.59, track_max_ms: 18401.7, lock_mean_ms: 0.000679, lock_max_ms: 0.00089, queue_wait_mean_ms: 1.88907}
+rays: 2739

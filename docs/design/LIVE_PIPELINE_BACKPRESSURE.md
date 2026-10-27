@@ -168,3 +168,47 @@ Arrival-order patch validation: C++ runtime and ROS bridge built successfully;
 30 focused tests passed, including the new case where an absent second camera
 cannot hold the first agent's IMU. Existing timestamp-watermark and lockstep tests
 remain enabled. Cloud comparison is pending; no latency reduction is claimed yet.
+
+### Arrival-order regression RCA and correction
+
+The 100-s verification `20261027T023847Z-gpu-366b2a` failed: both workers exhausted
+IMU before processing camera stamps 75.35/78.55 s. Its reported RTF is not a
+successful pipeline benchmark. Failure logs and profiles are retained under
+`evaluation/runs/live_pipeline_final/arrival_failure/`.
+
+The change removed canonical ordering but retained an EOF rule that assumed it:
+the first image or IMU after end_s closed all sensor queues. The bridge's fair
+sender allowed only 32 small control messages per two large image messages.
+Under image drops/slow image writes this also limited IMU delivery, while newer
+images could advance independently. Once an image crossed end_s, delayed IMU was
+cut off. Global ordering had previously concealed that dependency.
+
+Correction: each bridge stereo queue is eligible only through that agent's
+successfully transmitted IMU timestamp. The watermark is per agent, and its queue
+still retains at most two complete pending pairs. Advance occurs after a successful
+socket write, so the downstream receiver obtains the IMU before that pair. Control
+bursts are increased to a bounded 512 messages to avoid rate-limiting small sensor
+messages behind megabyte image payloads. This does not guarantee a throughput rate;
+the bracket invariant holds even under overload.
+
+Demo EOF now tracks left/right camera and IMU crossing separately for every agent.
+Images after the horizon are discarded. The first IMU sample beyond the horizon
+is admitted, providing a bracket for a camera exactly at end_s, before queues close.
+This boundary also applies when replaying demo recordings; lockstep retains the
+original canonical boundary. Per-topic FIFO delivery is assumed. A missing sensor
+must produce explicit watchdog/EOF failure, never a fabricated inertial sample.
+
+Tests cover the failing camera-before-IMU interleaving, bounded queues with an
+independently progressing second agent, a fast camera crossing before lagging IMU,
+and admission of the final IMU bracket before completion.
+
+The failed run did yield usable stage timings: six decisions averaged 4.422 s,
+including 3.853 s in the parallel planning stage and 0.556 s in map integration.
+These local timings identify the next optimization target, but do not establish
+mission performance. Clock-based age summaries require caution: clock messages
+shared the lagging control queue in this failed run, so their freshness was limited.
+
+Correction validation: core runtime and ROS bridge builds passed. The unit suite
+and 30 focused live/lockstep/allocation tests passed, including four new regression
+cases for IMU gating and the end-of-mission boundary. Live verification remains
+required; passing these tests is not a claim that the full pipeline is complete.

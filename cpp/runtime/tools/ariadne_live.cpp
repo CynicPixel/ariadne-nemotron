@@ -28,6 +28,7 @@
 #include "runtime/live/a1_planner.hpp"
 #include "runtime/live/collab_live.hpp"
 #include "runtime/live/lockstep_gate.hpp"
+#include "runtime/live/sensor_horizon.hpp"
 #include "runtime/live/collab_tee.hpp"
 #include "runtime/live/multiagent_glue.hpp"
 #include "runtime/live/planner.hpp"
@@ -928,10 +929,11 @@ int main(int argc, char** argv) {
         const YAML::Node mj = YAML::LoadFile(scene + "/mission_live.json");
         std::map<std::string, std::pair<int, std::string>> route;   // topic -> (agent, role)
         std::map<int, std::string> cmd_topic;
-        std::set<std::string> timed;
+        std::set<std::string> timed, left_image_topics;
         for (const auto& a : mj["agents"]) {
             const int k = a["agent"].as<int>();
             const auto t = a["topics"];
+            left_image_topics.insert(t["left_image"].as<std::string>());
             route[t["left_image"].as<std::string>()] = {k, "image"};
             route[t["right_image"].as<std::string>()] = {k, "image"};
             route[t["gt_pose"].as<std::string>()] = {k, "gt"};
@@ -1014,6 +1016,7 @@ int main(int argc, char** argv) {
         live::ConsumedRecorder rec;
         if (is_live) rec.Open((run_dir / "inputs.mcap").string());
         std::atomic<bool> past_end{false};
+        live::SensorHorizon sensor_horizon(size_t(NA), end_ns);
         uint64_t seq = 0;
         long dropped_untyped = 0;
         std::vector<int> worker_fd(static_cast<size_t>(NA), -1);   // D168 estimator processes; -1 = in-process
@@ -1029,7 +1032,21 @@ int main(int argc, char** argv) {
                 return;
             }
             const auto [agent, role] = it->second;
-            if ((role == "image" || role == "imu") && m.stamp_ns > end_ns) {   // same live/replay mission boundary
+            if (lc.demo && !lc.lockstep && (role == "image" || role == "imu")) {
+                const auto stream = role == "imu" ? live::SensorHorizon::Imu
+                    : left_image_topics.count(m.topic) != 0
+                        ? live::SensorHorizon::Left : live::SensorHorizon::Right;
+                const bool admit = sensor_horizon.Admit(size_t(agent), stream, m.stamp_ns);
+                // Dispatch the last required IMU before closing queues. Images
+                // past end are discarded, but a lagging agent keeps receiving.
+                if (!admit) {
+                    if (sensor_horizon.Complete()) {
+                        past_end = true;
+                        for (auto& l : lanes) l.images.Close(), l.imus.Close(), l.worker_inputs.Close();
+                    }
+                    return;
+                }
+            } else if ((role == "image" || role == "imu") && m.stamp_ns > end_ns) {
                 past_end = true;
                 for (auto& l : lanes) l.images.Close(), l.imus.Close(), l.worker_inputs.Close();
                 return;
@@ -1078,6 +1095,10 @@ int main(int argc, char** argv) {
                 mover_state.Put("{\"agent\":" + std::to_string(agent) + ",\"seq\":" + std::to_string(m.seq) +
                                 ",\"state\":" + js + "}");
                 telemetry.Put("{\"type\":\"mover_state\",\"agent\":" + std::to_string(agent) + ",\"state\":" + js + "}");
+            }
+            if (lc.demo && !lc.lockstep && sensor_horizon.Complete()) {
+                past_end = true;
+                for (auto& l : lanes) l.images.Close(), l.imus.Close(), l.worker_inputs.Close();
             }
         };
 

@@ -1,0 +1,18 @@
+ariadne_live: waiting for the ROS edge on build/live/runs/live-20261027T024511Z-3ad2/link.sock
+[ WARN:0@1.926] global net_impl_backend.cpp:345 setPreferableTarget Targets are not supported by the new graph engine for now
+ariadne_live: link up
+[ WARN:0@3.017] global net_impl_backend.cpp:345 setPreferableTarget Targets are not supported by the new graph engine for now
+ariadne_live worker 1: live: IMU stream ended before frame timestamp 78550000000
+sensor queues agent=1 dropped_pairs=776 dropped_incomplete=0 late_images=0 image_peak_bytes=13824340 imu_peak_bytes=26228
+ariadne_live worker 0: live: IMU stream ended before frame timestamp 75350000000
+sensor queues agent=0 dropped_pairs=778 dropped_incomplete=0 late_images=0 image_peak_bytes=13824340 imu_peak_bytes=23904
+sim-live/89e61fecbb277f69/agent1: 0 frames; rig fx=640.00 B=0.1000; gt samples 0
+  stereo row refinement at keyframe 0: dy = -0.047 -0.00004 x +0.00018 y px (113 matches, MAD 0.070 px)
+  frame 0: tracks 220, status 0, keyframes 1
+sim-live/89e61fecbb277f69/agent0: 0 frames; rig fx=640.00 B=0.1000; gt samples 0
+  stereo row refinement at keyframe 0: dy = +0.180 -0.00018 x -0.00009 y px (129 matches, MAD 0.126 px)
+  frame 0: tracks 231, status 0, keyframes 1
+collab_worker agent 1: threads 4, keyframes 10, releases 0, requests 0, gone 0, unknown 0, evicted_early 0, ms_place 4202, ms_aliked 0
+collab_worker agent 0: threads 4, keyframes 10, releases 0, requests 0, gone 0, unknown 0, evicted_early 0, ms_place 4524, ms_aliked 0
+ariadne_live: splat tee 22 sends, 73737148 bytes, 4322.5 ms socket-busy (0 dropped under the viewer bound)
+ariadne_live[live]: 6 replans, 12 decisions, consumed 53940 messages (digest ce2d5065cd842543) -> build/live/runs/live-20261027T024511Z-3ad2/89e61fecbb277f69-live-20261027T024520Z

@@ -1,0 +1,14 @@
+{"agent":0,"decision_ns":5000000000,"clock_ns_at_send":10701000000,"wall_s":31.142684}
+{"agent":1,"decision_ns":5000000000,"clock_ns_at_send":10701000000,"wall_s":31.143149}
+{"agent":0,"decision_ns":10000000000,"clock_ns_at_send":16051000000,"wall_s":36.654566}
+{"agent":1,"decision_ns":10000000000,"clock_ns_at_send":16051000000,"wall_s":36.655196}
+{"agent":0,"decision_ns":15000000000,"clock_ns_at_send":22401000000,"wall_s":43.507560}
+{"agent":1,"decision_ns":15000000000,"clock_ns_at_send":22401000000,"wall_s":43.508047}
+{"agent":0,"decision_ns":25000000000,"clock_ns_at_send":30613000000,"wall_s":52.352988}
+{"agent":1,"decision_ns":25000000000,"clock_ns_at_send":30613000000,"wall_s":52.353068}
+{"agent":0,"decision_ns":40000000000,"clock_ns_at_send":48201000000,"wall_s":70.726929}
+{"agent":1,"decision_ns":40000000000,"clock_ns_at_send":48201000000,"wall_s":70.726991}
+{"agent":0,"decision_ns":45000000000,"clock_ns_at_send":51751000000,"wall_s":74.533715}
+{"agent":1,"decision_ns":45000000000,"clock_ns_at_send":51751000000,"wall_s":74.533803}
+{"agent":0,"decision_ns":100000000000,"clock_ns_at_send":57551000000,"wall_s":80.611316}
+{"agent":1,"decision_ns":100000000000,"clock_ns_at_send":57551000000,"wall_s":80.611381}

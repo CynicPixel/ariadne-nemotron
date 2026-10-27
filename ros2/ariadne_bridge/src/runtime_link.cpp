@@ -95,6 +95,7 @@ public:
                 throw std::runtime_error("RuntimeLink: unsupported direction " + dir);
             }
         }
+        for (const auto& [agent, queue] : image_out_) imu_topic_[agent + "/imu"] = queue;
         // D167 timers: /clock (bridged but never forwarded) feeds a (sim ns, wall) ring; each forwarded message's
         // bridge latency = wall at forward - wall when /clock first reached its stamp. Aggregates go out in #stats.
         rclcpp::SubscriptionOptions clock_options;
@@ -175,7 +176,7 @@ private:
             auto& queue = image_out_[prefix];
             if (!queue) {
                 queue = std::make_shared<live::MessageQueue>();
-                queue->ConfigureSensor(64ULL * 1024 * 1024, prefix + "/left/image_raw", prefix + "/right/image_raw");
+                queue->ConfigureSensor(64ULL * 1024 * 1024, prefix + "/left/image_raw", prefix + "/right/image_raw", true);
             }
             image_topic_[topic] = queue;
         }
@@ -221,7 +222,7 @@ private:
             bool sent = false;
             // Bound control bursts, then serve each agent once; neither image
             // traffic nor a continuous IMU stream can starve the other class.
-            for (int i = 0; i < 32 && !stop_; ++i) {
+            for (int i = 0; i < 512 && !stop_; ++i) {
                 auto m = control_out_.TryPop(); if (!m) break;
                 WireSend(*m); sent = true;
             }
@@ -238,6 +239,10 @@ private:
     }
     void WireSend(const live::StreamMessage& m) {
         const bool ok = live::WriteFrame(fd_, m.topic, m.data->data(), m.data->size());
+        if (ok) {
+            const auto imu = imu_topic_.find(m.topic);
+            if (imu != imu_topic_.end()) imu->second->AdvanceStereoWatermark(m.stamp_ns);
+        }
         { std::lock_guard<std::mutex> lk(write_mu_);
           if (m.topic[0] != '#') ++received_[m.topic];
           if (!ok) ++dropped_[m.topic]; }
@@ -250,7 +255,7 @@ private:
             m.topic = topic;
             m.data = std::make_shared<const std::vector<uint8_t>>(data, data + n);
             const auto image = image_topic_.find(topic);
-            if (image != image_topic_.end()) {
+            if (image != image_topic_.end() || imu_topic_.count(topic)) {
                 if (n < 12) throw std::runtime_error("short stereo image header");
                 int32_t sec; uint32_t nsec;
                 std::memcpy(&sec, data + 4, 4); std::memcpy(&nsec, data + 8, 4);
@@ -400,7 +405,7 @@ private:
     std::unique_ptr<rclcpp::executors::SingleThreadedExecutor> control_executor_;
     bool asynchronous_ = false;
     live::MessageQueue control_out_;
-    std::map<std::string, std::shared_ptr<live::MessageQueue>> image_out_, image_topic_;
+    std::map<std::string, std::shared_ptr<live::MessageQueue>> image_out_, image_topic_, imu_topic_;
     std::mutex send_mu_;
     std::condition_variable send_cv_;
     uint64_t send_generation_ = 0;

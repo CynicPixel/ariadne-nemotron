@@ -26,13 +26,21 @@ struct StreamMessage {
 class MessageQueue {
 public:
     explicit MessageQueue(size_t capacity = 0) : cap_(capacity) {}
-    void ConfigureSensor(size_t byte_limit, std::string left = {}, std::string right = {}) {
+    void ConfigureSensor(size_t byte_limit, std::string left = {}, std::string right = {}, bool require_imu = false) {
         std::lock_guard<std::mutex> lk(mu_);
         if (!q_.empty() || closed_ || !byte_limit) throw std::logic_error("configure an empty open sensor queue");
         if (left.empty() != right.empty() || (!left.empty() && left == right))
             throw std::invalid_argument("stereo queue needs distinct left/right topics");
         byte_limit_ = byte_limit;
         left_ = std::move(left); right_ = std::move(right);
+        require_imu_ = require_imu;
+        if (require_imu_ && left_.empty()) throw std::invalid_argument("IMU gate requires stereo topics");
+    }
+    // Advance only after the corresponding IMU was successfully transmitted.
+    // This bounds camera lead without waiting for any other agent's camera.
+    void AdvanceStereoWatermark(int64_t stamp) {
+        { std::lock_guard<std::mutex> lk(mu_); imu_watermark_ = std::max(imu_watermark_, stamp); }
+        cv_.notify_one();
     }
     // Installed before producers start. Callback must be short, nonthrowing and
     // must not re-enter this queue. Used to journal demo pair selection/drop decisions.
@@ -113,7 +121,9 @@ private:
     };
     static size_t Bytes(const StreamMessage& m) { return m.data ? m.data->size() : 0; }
     std::map<int64_t, Pair>::iterator Complete() {
-        return std::find_if(pairs_.begin(), pairs_.end(), [](const auto& p) { return p.second.complete(); });
+        return std::find_if(pairs_.begin(), pairs_.end(), [this](const auto& p) {
+            return p.second.complete() && (!require_imu_ || p.first <= imu_watermark_);
+        });
     }
     size_t Depth() const {
         size_t n = q_.size() + bool(partner_);
@@ -140,7 +150,8 @@ private:
     }
     size_t cap_ = 0, byte_limit_ = 0, bytes_ = 0, max_bytes_ = 0, max_depth_ = 0;
     size_t dropped_pairs_ = 0, dropped_incomplete_ = 0, late_images_ = 0;
-    int64_t selected_stamp_ = -1;
+    int64_t selected_stamp_ = -1, imu_watermark_ = -1;
+    bool require_imu_ = false;
     std::string left_, right_;
     mutable std::mutex mu_;
     std::condition_variable cv_, space_;

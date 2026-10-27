@@ -1,4 +1,5 @@
 #include "runtime/live/message_queue.hpp"
+#include "runtime/live/sensor_horizon.hpp"
 #include <gtest/gtest.h>
 #include <future>
 #include <thread>
@@ -73,4 +74,54 @@ TEST(SensorQueue, FairSenderCanPollIncompleteStereoWithoutBlockingControl) {
     image.Push(M("R", 1));
     EXPECT_EQ(image.TryPop()->topic, "L"); EXPECT_EQ(image.TryPop()->topic, "R");
     EXPECT_FALSE(image.TryPop());
+}
+
+TEST(SensorQueue, StereoCannotOvertakeItsTransmittedImu) {
+    MessageQueue q; q.ConfigureSensor(4096, "L", "R", true);
+    Pair(q, 78550);
+    q.AdvanceStereoWatermark(60670);
+    EXPECT_FALSE(q.TryPop());  // representative interleaving: image precedes its IMU bracket
+    q.AdvanceStereoWatermark(78549);
+    EXPECT_FALSE(q.TryPop());
+    q.AdvanceStereoWatermark(78550);
+    ASSERT_TRUE(q.TryPop());
+    auto right = q.TryPop(); ASSERT_TRUE(right); EXPECT_EQ(right->stamp_ns, 78550);
+}
+TEST(SensorQueue, ImuGateIsPerAgentAndRetainsBoundedFreshPairs) {
+    MessageQueue a, b;
+    a.ConfigureSensor(4096, "L", "R", true); b.ConfigureSensor(4096, "L", "R", true);
+    for (int i = 0; i < 100; ++i) Pair(a, i);
+    Pair(b, 99); b.AdvanceStereoWatermark(99);
+    EXPECT_FALSE(a.TryPop());
+    ASSERT_TRUE(b.TryPop());  // the slow IMU of A cannot hold B
+    EXPECT_EQ(a.dropped_pairs(), 98);
+    a.AdvanceStereoWatermark(99);
+    EXPECT_EQ(a.TryPop()->stamp_ns, 98);
+    EXPECT_EQ(a.TryPop()->stamp_ns, 98);
+    EXPECT_EQ(a.TryPop()->stamp_ns, 99);
+}
+TEST(SensorHorizon, FastCameraCannotCloseLaggingImuOrAnotherAgent) {
+    SensorHorizon h(2, 100);
+    EXPECT_FALSE(h.Admit(0, SensorHorizon::Left, 101));
+    EXPECT_FALSE(h.Admit(0, SensorHorizon::Right, 101));
+    EXPECT_FALSE(h.Complete());  // the previous any-stream cutoff closed here
+    EXPECT_TRUE(h.Admit(0, SensorHorizon::Imu, 79));
+    EXPECT_TRUE(h.Admit(0, SensorHorizon::Imu, 101));
+    EXPECT_FALSE(h.Admit(0, SensorHorizon::Imu, 102));
+    EXPECT_FALSE(h.Complete());
+    EXPECT_TRUE(h.Admit(1, SensorHorizon::Left, 100));
+    EXPECT_TRUE(h.Admit(1, SensorHorizon::Right, 100));
+    EXPECT_TRUE(h.Admit(1, SensorHorizon::Imu, 101));
+    EXPECT_FALSE(h.Admit(1, SensorHorizon::Left, 101));
+    EXPECT_FALSE(h.Complete());
+    EXPECT_FALSE(h.Admit(1, SensorHorizon::Right, 101));
+    EXPECT_TRUE(h.Complete());
+}
+TEST(SensorHorizon, LastImuBracketIsAdmittedBeforeCompletion) {
+    SensorHorizon h(1, 100);
+    EXPECT_FALSE(h.Admit(0, SensorHorizon::Left, 101));
+    EXPECT_FALSE(h.Admit(0, SensorHorizon::Right, 101));
+    EXPECT_FALSE(h.Complete());
+    EXPECT_TRUE(h.Admit(0, SensorHorizon::Imu, 101));
+    EXPECT_TRUE(h.Complete());
 }

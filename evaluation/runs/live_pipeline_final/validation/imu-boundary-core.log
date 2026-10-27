@@ -1,0 +1,361 @@
+[0/2] Re-checking globbed directories...
+[1/6] Building CXX object cpp/runtime/CMakeFiles/ariadne_live.dir/tools/ariadne_live.cpp.o
+[2/6] Linking CXX executable cpp/runtime/ariadne_live
+[3/6] Building CXX object tests/CMakeFiles/test_unit.dir/unit/test_message_queue.cpp.o
+[4/6] Linking CXX executable tests/test_unit
+[5/6] Building CXX object tests/CMakeFiles/test_opencv.dir/unit/test_live_link.cpp.o
+[6/6] Linking CXX executable tests/test_opencv
+Running main() from /work/.cache/fetchcontent-docker/googletest-src/googletest/src/gtest_main.cc
+[==========] Running 106 tests from 19 test suites.
+[----------] Global test environment set-up.
+[----------] 4 tests from Seeds
+[ RUN      ] Seeds.DerivationIsDeterministicAndPurposeSpecific
+[       OK ] Seeds.DerivationIsDeterministicAndPurposeSpecific (0 ms)
+[ RUN      ] Seeds.PurposeIdsAreNameDerivedNotPositional
+[       OK ] Seeds.PurposeIdsAreNameDerivedNotPositional (0 ms)
+[ RUN      ] Seeds.NearbyRootSeedsDecorrelate
+[       OK ] Seeds.NearbyRootSeedsDecorrelate (0 ms)
+[ RUN      ] Seeds.DistinctPurposesProduceDistinctStreams
+[       OK ] Seeds.DistinctPurposesProduceDistinctStreams (0 ms)
+[----------] 4 tests from Seeds (0 ms total)
+
+[----------] 8 tests from EventLog
+[ RUN      ] EventLog.AllTwentyEventTypesAreNamed
+[       OK ] EventLog.AllTwentyEventTypesAreNamed (0 ms)
+[ RUN      ] EventLog.SequenceIdsAreContiguousFromZero
+[       OK ] EventLog.SequenceIdsAreContiguousFromZero (0 ms)
+[ RUN      ] EventLog.IdenticalSequencesProduceIdenticalStateHash
+[       OK ] EventLog.IdenticalSequencesProduceIdenticalStateHash (0 ms)
+[ RUN      ] EventLog.HashChainLocalizesDivergence
+[       OK ] EventLog.HashChainLocalizesDivergence (0 ms)
+[ RUN      ] EventLog.AZeroChainValueDoesNotRestartTheChain
+[       OK ] EventLog.AZeroChainValueDoesNotRestartTheChain (0 ms)
+[ RUN      ] EventLog.AnyFieldChangeChangesTheHash
+[       OK ] EventLog.AnyFieldChangeChangesTheHash (0 ms)
+[ RUN      ] EventLog.EmitsOneValidJsonObjectPerLine
+[       OK ] EventLog.EmitsOneValidJsonObjectPerLine (0 ms)
+[ RUN      ] EventLog.EscapesJsonHostileContent
+[       OK ] EventLog.EscapesJsonHostileContent (0 ms)
+[----------] 8 tests from EventLog (0 ms total)
+
+[----------] 6 tests from RunManifest
+[ RUN      ] RunManifest.UnrecordedFieldsAreVisibleNotAbsent
+[       OK ] RunManifest.UnrecordedFieldsAreVisibleNotAbsent (0 ms)
+[ RUN      ] RunManifest.SerializesTheSection282FieldSet
+[       OK ] RunManifest.SerializesTheSection282FieldSet (0 ms)
+[ RUN      ] RunManifest.RequiredFieldValidationCatchesAnUnpublishableRun
+[       OK ] RunManifest.RequiredFieldValidationCatchesAnUnpublishableRun (0 ms)
+[ RUN      ] RunManifest.YamlQuotesValuesThatWouldOtherwiseReparse
+[       OK ] RunManifest.YamlQuotesValuesThatWouldOtherwiseReparse (0 ms)
+[ RUN      ] RunManifest.ExecutionModeIsRecordedBecauseDeterminismDiffers
+[       OK ] RunManifest.ExecutionModeIsRecordedBecauseDeterminismDiffers (0 ms)
+[ RUN      ] RunManifest.DeterminismDigestsAreMeasuredNotCopied
+[       OK ] RunManifest.DeterminismDigestsAreMeasuredNotCopied (30 ms)
+[----------] 6 tests from RunManifest (30 ms total)
+
+[----------] 7 tests from StrictConfig
+[ RUN      ] StrictConfig.UnknownKeyIsAnError
+[       OK ] StrictConfig.UnknownKeyIsAnError (0 ms)
+[ RUN      ] StrictConfig.MissingRequiredKeyIsAnError
+[       OK ] StrictConfig.MissingRequiredKeyIsAnError (0 ms)
+[ RUN      ] StrictConfig.WrongTypeIsAnError
+[       OK ] StrictConfig.WrongTypeIsAnError (0 ms)
+[ RUN      ] StrictConfig.MalformedYamlIsAnError
+[       OK ] StrictConfig.MalformedYamlIsAnError (0 ms)
+[ RUN      ] StrictConfig.MissingFileIsAnError
+[       OK ] StrictConfig.MissingFileIsAnError (0 ms)
+[ RUN      ] StrictConfig.OptionalKeysFallBackButStillTypeCheck
+[       OK ] StrictConfig.OptionalKeysFallBackButStillTypeCheck (0 ms)
+[ RUN      ] StrictConfig.ReportsEveryUnconsumedKeySorted
+[       OK ] StrictConfig.ReportsEveryUnconsumedKeySorted (0 ms)
+[----------] 7 tests from StrictConfig (0 ms total)
+
+[----------] 7 tests from DegradationConfig
+[ RUN      ] DegradationConfig.RejectsPhysicallyMeaninglessValues
+[       OK ] DegradationConfig.RejectsPhysicallyMeaninglessValues (0 ms)
+[ RUN      ] DegradationConfig.AcceptsAMinimalValidConfig
+[       OK ] DegradationConfig.AcceptsAMinimalValidConfig (0 ms)
+[ RUN      ] DegradationConfig.AllSixteenNamedConfigsLoadAndValidate
+[       OK ] DegradationConfig.AllSixteenNamedConfigsLoadAndValidate (16 ms)
+[ RUN      ] DegradationConfig.DarknessAndDustLaddersAreMonotone
+[       OK ] DegradationConfig.DarknessAndDustLaddersAreMonotone (1 ms)
+[ RUN      ] DegradationConfig.SensorParametersAreConstantAcrossDarknessLevels
+[       OK ] DegradationConfig.SensorParametersAreConstantAcrossDarknessLevels (0 ms)
+[ RUN      ] DegradationConfig.Dust0DisablesDustEverywhere
+[       OK ] DegradationConfig.Dust0DisablesDustEverywhere (0 ms)
+[ RUN      ] DegradationConfig.LoadedConfigsProduceMonotonicallyDarkerImages
+[       OK ] DegradationConfig.LoadedConfigsProduceMonotonicallyDarkerImages (2 ms)
+[----------] 7 tests from DegradationConfig (22 ms total)
+
+[----------] 1 test from SimDepth
+[ RUN      ] SimDepth.ForwardSplatKeepsTheNearestAndLeavesDisocclusionsUnknown
+[       OK ] SimDepth.ForwardSplatKeepsTheNearestAndLeavesDisocclusionsUnknown (0 ms)
+[----------] 1 test from SimDepth (0 ms total)
+
+[----------] 5 tests from MetricRegistry
+[ RUN      ] MetricRegistry.HasExactlyTheSection302MetricsPerGroup
+[       OK ] MetricRegistry.HasExactlyTheSection302MetricsPerGroup (0 ms)
+[ RUN      ] MetricRegistry.AnEmptyReportIsMissingEverything
+[       OK ] MetricRegistry.AnEmptyReportIsMissingEverything (0 ms)
+[ RUN      ] MetricRegistry.ACompleteReportPassesTheGate
+[       OK ] MetricRegistry.ACompleteReportPassesTheGate (0 ms)
+[ RUN      ] MetricRegistry.NonFiniteValuesCountAsMissing
+[       OK ] MetricRegistry.NonFiniteValuesCountAsMissing (0 ms)
+[ RUN      ] MetricRegistry.UnknownIdsAreReported
+[       OK ] MetricRegistry.UnknownIdsAreReported (0 ms)
+[----------] 5 tests from MetricRegistry (0 ms total)
+
+[----------] 5 tests from TrajectoryMetrics
+[ RUN      ] TrajectoryMetrics.RigidReframingGivesZeroAbsoluteError
+[       OK ] TrajectoryMetrics.RigidReframingGivesZeroAbsoluteError (0 ms)
+[ RUN      ] TrajectoryMetrics.RotationErrorIsInvisibleToTranslationAtE
+[       OK ] TrajectoryMetrics.RotationErrorIsInvisibleToTranslationAtE (0 ms)
+[ RUN      ] TrajectoryMetrics.RotationErrorSurvivesReframing
+[       OK ] TrajectoryMetrics.RotationErrorSurvivesReframing (0 ms)
+[ RUN      ] TrajectoryMetrics.MismatchedLengthsYieldNoNumber
+[       OK ] TrajectoryMetrics.MismatchedLengthsYieldNoNumber (0 ms)
+[ RUN      ] TrajectoryMetrics.TimeBasedRpeIsUnaffectedByDroppedSamples
+[       OK ] TrajectoryMetrics.TimeBasedRpeIsUnaffectedByDroppedSamples (0 ms)
+[----------] 5 tests from TrajectoryMetrics (0 ms total)
+
+[----------] 7 tests from PerceptionConfig
+[ RUN      ] PerceptionConfig.ShippedPlaceholderLoadsAndValidates
+[       OK ] PerceptionConfig.ShippedPlaceholderLoadsAndValidates (0 ms)
+[ RUN      ] PerceptionConfig.MinObservableRangeMatchesSection94
+[       OK ] PerceptionConfig.MinObservableRangeMatchesSection94 (0 ms)
+[ RUN      ] PerceptionConfig.WideBaselineWithoutMoreDisparitiesIsRefused
+[       OK ] PerceptionConfig.WideBaselineWithoutMoreDisparitiesIsRefused (0 ms)
+[ RUN      ] PerceptionConfig.SgbmContractViolationsAreRefused
+[       OK ] PerceptionConfig.SgbmContractViolationsAreRefused (0 ms)
+[ RUN      ] PerceptionConfig.MisspelledSectionKeyFails
+[       OK ] PerceptionConfig.MisspelledSectionKeyFails (0 ms)
+[ RUN      ] PerceptionConfig.EveryShippedConfigLoads
+[       OK ] PerceptionConfig.EveryShippedConfigLoads (93 ms)
+[ RUN      ] PerceptionConfig.SweepDisparityRangesAreTheValidatorMinimum
+[       OK ] PerceptionConfig.SweepDisparityRangesAreTheValidatorMinimum (2 ms)
+[----------] 7 tests from PerceptionConfig (96 ms total)
+
+[----------] 10 tests from Euroc
+[ RUN      ] Euroc.ParsesSensorYamlIncludingTheOpenCvDirective
+[       OK ] Euroc.ParsesSensorYamlIncludingTheOpenCvDirective (0 ms)
+[ RUN      ] Euroc.AcceptsEquidistantAndRefusesUnknownModels
+[       OK ] Euroc.AcceptsEquidistantAndRefusesUnknownModels (0 ms)
+[ RUN      ] Euroc.StereoExtrinsicMatchesIndependentlyPublishedValue
+[       OK ] Euroc.StereoExtrinsicMatchesIndependentlyPublishedValue (0 ms)
+[ RUN      ] Euroc.RejectsNonRigidOrUnsupportedCalibration
+[       OK ] Euroc.RejectsNonRigidOrUnsupportedCalibration (0 ms)
+[ RUN      ] Euroc.PairsByExactTimestampNotByRow
+[       OK ] Euroc.PairsByExactTimestampNotByRow (0 ms)
+[ RUN      ] Euroc.RejectsNonIncreasingTimestamps
+[       OK ] Euroc.RejectsNonIncreasingTimestamps (0 ms)
+[ RUN      ] Euroc.ParsesGroundTruthRows
+[       OK ] Euroc.ParsesGroundTruthRows (0 ms)
+[ RUN      ] Euroc.AssociatesNearestWithinEvoDefault
+[       OK ] Euroc.AssociatesNearestWithinEvoDefault (0 ms)
+[ RUN      ] Euroc.WritesEvoCompatibleTum
+[       OK ] Euroc.WritesEvoCompatibleTum (0 ms)
+[ RUN      ] Euroc.RectifiedCameraToBodyRoundTripNeedsR1
+[       OK ] Euroc.RectifiedCameraToBodyRoundTripNeedsR1 (0 ms)
+[----------] 10 tests from Euroc (2 ms total)
+
+[----------] 2 tests from EurocImu
+[ RUN      ] EurocImu.ParsesRowsAndRejectsMalformedOnes
+[       OK ] EurocImu.ParsesRowsAndRejectsMalformedOnes (0 ms)
+[ RUN      ] EurocImu.NoiseModelRequiresIdentityExtrinsic
+[       OK ] EurocImu.NoiseModelRequiresIdentityExtrinsic (0 ms)
+[----------] 2 tests from EurocImu (0 ms total)
+
+[----------] 1 test from ImuIntegration
+[ RUN      ] ImuIntegration.GyroIntegralClipsToTheIntervalAndRemovesBias
+[       OK ] ImuIntegration.GyroIntegralClipsToTheIntervalAndRemovesBias (0 ms)
+[----------] 1 test from ImuIntegration (0 ms total)
+
+[----------] 6 tests from ImuNoise
+[ RUN      ] ImuNoise.BitIdenticalPerSeedAndSampleWhateverTheReplayLength
+[       OK ] ImuNoise.BitIdenticalPerSeedAndSampleWhateverTheReplayLength (14 ms)
+[ RUN      ] ImuNoise.IncrementalStreamMatchesBatchAcrossArbitraryChunks
+[       OK ] ImuNoise.IncrementalStreamMatchesBatchAcrossArbitraryChunks (5 ms)
+[ RUN      ] ImuNoise.ZeroDensitiesReturnTheCleanStreamPlusTheInitialBias
+[       OK ] ImuNoise.ZeroDensitiesReturnTheCleanStreamPlusTheInitialBias (0 ms)
+[ RUN      ] ImuNoise.WhiteNoiseStdIsDensityOverSqrtDt
+[       OK ] ImuNoise.WhiteNoiseStdIsDensityOverSqrtDt (38 ms)
+[ RUN      ] ImuNoise.BiasRandomWalkVarianceGrowsAsDensitySquaredTimesT
+[       OK ] ImuNoise.BiasRandomWalkVarianceGrowsAsDensitySquaredTimesT (362 ms)
+[ RUN      ] ImuNoise.ShippedConfigLoadsAndMatchesTheRigRate
+[       OK ] ImuNoise.ShippedConfigLoadsAndMatchesTheRigRate (1 ms)
+[----------] 6 tests from ImuNoise (422 ms total)
+
+[----------] 7 tests from Comms
+[ RUN      ] Comms.LossMatchesRfCommsPerPacketMonteCarlo
+[       OK ] Comms.LossMatchesRfCommsPerPacketMonteCarlo (483 ms)
+[ RUN      ] Comms.LossIsPricedAtTheDatagramsOwnSize
+[       OK ] Comms.LossIsPricedAtTheDatagramsOwnSize (458 ms)
+[ RUN      ] Comms.PathLossRangeCutAndRate
+[       OK ] Comms.PathLossRangeCutAndRate (0 ms)
+[ RUN      ] Comms.WallsCountBlocksNotFacesAndDoorwaysAreFree
+[       OK ] Comms.WallsCountBlocksNotFacesAndDoorwaysAreFree (0 ms)
+[ RUN      ] Comms.TracksInterpolateAndClamp
+[       OK ] Comms.TracksInterpolateAndClamp (0 ms)
+[ RUN      ] Comms.EveryShippedScenarioLoadsAndBuilds
+[       OK ] Comms.EveryShippedScenarioLoadsAndBuilds (1397 ms)
+[ RUN      ] Comms.OneLedgerAndForwardedDatagramsAreNeverRecorded
+[       OK ] Comms.OneLedgerAndForwardedDatagramsAreNeverRecorded (469 ms)
+[----------] 7 tests from Comms (2809 ms total)
+
+[----------] 11 tests from RosCdr
+[ RUN      ] RosCdr.MonoImage
+[       OK ] RosCdr.MonoImage (0 ms)
+[ RUN      ] RosCdr.RgbImageWithLongFrameId
+[       OK ] RosCdr.RgbImageWithLongFrameId (0 ms)
+[ RUN      ] RosCdr.CameraInfoAlignmentAndArrays
+[       OK ] RosCdr.CameraInfoAlignmentAndArrays (0 ms)
+[ RUN      ] RosCdr.Imu
+[       OK ] RosCdr.Imu (0 ms)
+[ RUN      ] RosCdr.PoseStamped
+[       OK ] RosCdr.PoseStamped (0 ms)
+[ RUN      ] RosCdr.TfMessageWithTwoTransforms
+[       OK ] RosCdr.TfMessageWithTwoTransforms (0 ms)
+[ RUN      ] RosCdr.Clock
+[       OK ] RosCdr.Clock (0 ms)
+[ RUN      ] RosCdr.BigEndianEncapsulationIsHonoured
+[       OK ] RosCdr.BigEndianEncapsulationIsHonoured (0 ms)
+[ RUN      ] RosCdr.EveryTruncationThrows
+[       OK ] RosCdr.EveryTruncationThrows (2 ms)
+[ RUN      ] RosCdr.CorruptionIsRejected
+[       OK ] RosCdr.CorruptionIsRejected (0 ms)
+[ RUN      ] RosCdr.BytesPerPixel
+[       OK ] RosCdr.BytesPerPixel (0 ms)
+[----------] 11 tests from RosCdr (2 ms total)
+
+[----------] 5 tests from RosCdrWriter
+[ RUN      ] RosCdrWriter.ReproducesRclpyBytesExactly
+[       OK ] RosCdrWriter.ReproducesRclpyBytesExactly (0 ms)
+[ RUN      ] RosCdrWriter.ReproducesLiveBridgeBytesIncludingPadding
+[       OK ] RosCdrWriter.ReproducesLiveBridgeBytesIncludingPadding (0 ms)
+[ RUN      ] RosCdrWriter.PaddingIsZeroForEveryFrameIdLengthAndRoundTripsBitExact
+[       OK ] RosCdrWriter.PaddingIsZeroForEveryFrameIdLengthAndRoundTripsBitExact (0 ms)
+[ RUN      ] RosCdrWriter.TfMessageRoundTripsWithZeroPadding
+[       OK ] RosCdrWriter.TfMessageRoundTripsWithZeroPadding (0 ms)
+[ RUN      ] RosCdrWriter.RejectsEmbeddedNul
+[       OK ] RosCdrWriter.RejectsEmbeddedNul (0 ms)
+[----------] 5 tests from RosCdrWriter (0 ms total)
+
+[----------] 3 tests from RosbagReader
+[ RUN      ] RosbagReader.ReadsEveryTopicInLogTimeOrderAndDecodes
+[       OK ] RosbagReader.ReadsEveryTopicInLogTimeOrderAndDecodes (33 ms)
+[ RUN      ] RosbagReader.TopicFilterAndMissingFile
+[       OK ] RosbagReader.TopicFilterAndMissingFile (0 ms)
+[ RUN      ] RosbagReader.ReadsTheCanonicalStreamBagRosFree
+[       OK ] RosbagReader.ReadsTheCanonicalStreamBagRosFree (11 ms)
+[----------] 3 tests from RosbagReader (44 ms total)
+
+[----------] 9 tests from SensorQueue
+[ RUN      ] SensorQueue.LateImuCanPassMoreThan64ImagesWithoutAConsumer
+[       OK ] SensorQueue.LateImuCanPassMoreThan64ImagesWithoutAConsumer (10 ms)
+[ RUN      ] SensorQueue.LatestRetainsTwoWholePairs
+[       OK ] SensorQueue.LatestRetainsTwoWholePairs (0 ms)
+[ RUN      ] SensorQueue.InFlightPartnerSurvivesProducerOverload
+[       OK ] SensorQueue.InFlightPartnerSurvivesProducerOverload (0 ms)
+[ RUN      ] SensorQueue.BoundedIncompleteAndNoLateResurrection
+[       OK ] SensorQueue.BoundedIncompleteAndNoLateResurrection (0 ms)
+[ RUN      ] SensorQueue.MixedInboxPreservesAllImuWhileDroppingImages
+[       OK ] SensorQueue.MixedInboxPreservesAllImuWhileDroppingImages (0 ms)
+[ RUN      ] SensorQueue.LosslessOverflowIsExplicitAndCloseRejectsPush
+[       OK ] SensorQueue.LosslessOverflowIsExplicitAndCloseRejectsPush (0 ms)
+[ RUN      ] SensorQueue.FairSenderCanPollIncompleteStereoWithoutBlockingControl
+[       OK ] SensorQueue.FairSenderCanPollIncompleteStereoWithoutBlockingControl (0 ms)
+[ RUN      ] SensorQueue.StereoCannotOvertakeItsTransmittedImu
+[       OK ] SensorQueue.StereoCannotOvertakeItsTransmittedImu (0 ms)
+[ RUN      ] SensorQueue.ImuGateIsPerAgentAndRetainsBoundedFreshPairs
+[       OK ] SensorQueue.ImuGateIsPerAgentAndRetainsBoundedFreshPairs (0 ms)
+[----------] 9 tests from SensorQueue (10 ms total)
+
+[----------] 2 tests from SensorHorizon
+[ RUN      ] SensorHorizon.FastCameraCannotCloseLaggingImuOrAnotherAgent
+[       OK ] SensorHorizon.FastCameraCannotCloseLaggingImuOrAnotherAgent (0 ms)
+[ RUN      ] SensorHorizon.LastImuBracketIsAdmittedBeforeCompletion
+[       OK ] SensorHorizon.LastImuBracketIsAdmittedBeforeCompletion (0 ms)
+[----------] 2 tests from SensorHorizon (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 106 tests from 19 test suites ran. (3443 ms total)
+[  PASSED  ] 106 tests.
+Running main() from /work/.cache/fetchcontent-docker/googletest-src/googletest/src/gtest_main.cc
+Note: Google Test filter = LiveLink.*:LockstepGate.*:MultiAgentPlanning.*:Multiagent.*
+[==========] Running 30 tests from 4 test suites.
+[----------] Global test environment set-up.
+[----------] 9 tests from LiveLink
+[ RUN      ] LiveLink.FramesRoundTripOverASocket
+[       OK ] LiveLink.FramesRoundTripOverASocket (5 ms)
+[ RUN      ] LiveLink.CommandAndMoverStateCdrRoundTrip
+[       OK ] LiveLink.CommandAndMoverStateCdrRoundTrip (0 ms)
+[ RUN      ] LiveLink.OrderBreaksAreCounted
+[       OK ] LiveLink.OrderBreaksAreCounted (0 ms)
+[ RUN      ] LiveLink.AnswersReleasedInCanonicalOrder
+[       OK ] LiveLink.AnswersReleasedInCanonicalOrder (0 ms)
+[ RUN      ] LiveLink.ReordererReleasesBehindTheWatermark
+[       OK ] LiveLink.ReordererReleasesBehindTheWatermark (250 ms)
+[ RUN      ] LiveLink.RecordingReplaysInConsumedOrderWithTies
+[       OK ] LiveLink.RecordingReplaysInConsumedOrderWithTies (0 ms)
+[ RUN      ] LiveLink.AssemblerLenientDropsWhereStrictThrows
+[       OK ] LiveLink.AssemblerLenientDropsWhereStrictThrows (16 ms)
+[ RUN      ] LiveLink.PipelinedIngestMatchesFeedExactly
+[       OK ] LiveLink.PipelinedIngestMatchesFeedExactly (0 ms)
+[ RUN      ] LiveLink.DemoArrivalOrderDoesNotWaitForAnotherCameraOrReorderImu
+[       OK ] LiveLink.DemoArrivalOrderDoesNotWaitForAnotherCameraOrReorderImu (0 ms)
+[----------] 9 tests from LiveLink (273 ms total)
+
+[----------] 7 tests from LockstepGate
+[ RUN      ] LockstepGate.WaitsOnEveryLane
+[       OK ] LockstepGate.WaitsOnEveryLane (0 ms)
+[ RUN      ] LockstepGate.PreD225ShapeTripsHere
+[       OK ] LockstepGate.PreD225ShapeTripsHere (0 ms)
+[ RUN      ] LockstepGate.AllDoneShortNeedsEveryLaneDoneBeforeT
+[       OK ] LockstepGate.AllDoneShortNeedsEveryLaneDoneBeforeT (0 ms)
+[ RUN      ] LockstepGate.MinProgressIsTheSlowestUnfinishedLane
+[       OK ] LockstepGate.MinProgressIsTheSlowestUnfinishedLane (0 ms)
+[ RUN      ] LockstepGate.DemoProgressDoesNotWaitForStalledPeer
+[       OK ] LockstepGate.DemoProgressDoesNotWaitForStalledPeer (0 ms)
+[ RUN      ] LockstepGate.CollaborativeDemoIntegratesItsOwnMaps
+[       OK ] LockstepGate.CollaborativeDemoIntegratesItsOwnMaps (0 ms)
+[ RUN      ] LockstepGate.SkippedDemoDecisionDoesNotSkipRadioHeartbeats
+[       OK ] LockstepGate.SkippedDemoDecisionDoesNotSkipRadioHeartbeats (0 ms)
+[----------] 7 tests from LockstepGate (0 ms total)
+
+[----------] 13 tests from MultiAgentPlanning
+[ RUN      ] MultiAgentPlanning.EncodeCellsTriStatePlusResponderBit
+[       OK ] MultiAgentPlanning.EncodeCellsTriStatePlusResponderBit (0 ms)
+[ RUN      ] MultiAgentPlanning.ExporterSendsOnlyBlocksChangedSinceTheAck
+[       OK ] MultiAgentPlanning.ExporterSendsOnlyBlocksChangedSinceTheAck (0 ms)
+[ RUN      ] MultiAgentPlanning.ReceivedLayersPlaceMergeAndRefuseOwn
+[       OK ] MultiAgentPlanning.ReceivedLayersPlaceMergeAndRefuseOwn (0 ms)
+[ RUN      ] MultiAgentPlanning.BrokerEqualsCentralisedSgaUnderFullDelivery
+[       OK ] MultiAgentPlanning.BrokerEqualsCentralisedSgaUnderFullDelivery (0 ms)
+[ RUN      ] MultiAgentPlanning.BrokerIsExactlyOnceByRSameAndIgnoresStrangers
+[       OK ] MultiAgentPlanning.BrokerIsExactlyOnceByRSameAndIgnoresStrangers (0 ms)
+[ RUN      ] MultiAgentPlanning.ApplyConsensusFollowsWhatArrivedOrSaysWhyNot
+[       OK ] MultiAgentPlanning.ApplyConsensusFollowsWhatArrivedOrSaysWhyNot (0 ms)
+[ RUN      ] MultiAgentPlanning.PlanOwnWithoutReceivedDataEqualsPlansOwnAgent
+[       OK ] MultiAgentPlanning.PlanOwnWithoutReceivedDataEqualsPlansOwnAgent (588 ms)
+[ RUN      ] MultiAgentPlanning.PeerKnownColumnsAreNoGain
+[       OK ] MultiAgentPlanning.PeerKnownColumnsAreNoGain (353 ms)
+[ RUN      ] MultiAgentPlanning.FootprintsSumToCoverageAndOnlyPerAgent
+[       OK ] MultiAgentPlanning.FootprintsSumToCoverageAndOnlyPerAgent (353 ms)
+[ RUN      ] MultiAgentPlanning.OverlapBrokerAvoidsTheSharedBlockDiscountAvoidsTheNearGoal
+[       OK ] MultiAgentPlanning.OverlapBrokerAvoidsTheSharedBlockDiscountAvoidsTheNearGoal (0 ms)
+[ RUN      ] MultiAgentPlanning.CutOffAgentDiscountsByRememberedClaims
+[       OK ] MultiAgentPlanning.CutOffAgentDiscountsByRememberedClaims (0 ms)
+[ RUN      ] MultiAgentPlanning.OperatorEgressRoutesOnlyOverWhatWasReceivedAndCertified
+[       OK ] MultiAgentPlanning.OperatorEgressRoutesOnlyOverWhatWasReceivedAndCertified (1 ms)
+[ RUN      ] MultiAgentPlanning.NAgentStepsOnNThreadsEqualTheSerialRun
+[       OK ] MultiAgentPlanning.NAgentStepsOnNThreadsEqualTheSerialRun (3884 ms)
+[----------] 13 tests from MultiAgentPlanning (5181 ms total)
+
+[----------] 1 test from Multiagent
+[ RUN      ] Multiagent.AllocationIdentitySurvivesGeometricSolveRevisions
+[       OK ] Multiagent.AllocationIdentitySurvivesGeometricSolveRevisions (0 ms)
+[----------] 1 test from Multiagent (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 30 tests from 4 test suites ran. (5456 ms total)
+[  PASSED  ] 30 tests.

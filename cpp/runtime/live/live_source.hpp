@@ -350,7 +350,8 @@ public:
         while (imu_.empty() || imu_.back().t_ns < t_ns) {
             if (!ReadOneImu()) {
                 if (imu_.empty() || imu_.back().t_ns < t_ns)
-                    throw std::runtime_error("live: IMU stream ended before frame timestamp " + std::to_string(t_ns));
+                    throw std::runtime_error("live: IMU stream ended before frame timestamp " + std::to_string(t_ns) +
+                                             "; last IMU=" + std::to_string(imu_.empty() ? -1 : imu_.back().t_ns));
                 break;
             }
         }
