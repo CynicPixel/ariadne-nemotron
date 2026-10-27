@@ -2619,6 +2619,7 @@ int main(int argc, char** argv) {
             // paused) and answered BEFORE the world resumes. Every barrier resumes to T + replan, the last one too
             // (frames past end_s close the lanes).
             if (latest_stereo) write_profile(T, "demo_decision");
+            else if (!is_live) write_profile(T, "replay_decision");   // the same stage split, offline (in-region replay)
             if (is_live && lc.lockstep) {
                 std::vector<std::pair<int, int64_t>> wait_for;   // (agent, command stamp) answers to have before resuming
                 for (int k = 0; k < NA; ++k) if (sent_at_T[k]) wait_for.push_back({k, T});

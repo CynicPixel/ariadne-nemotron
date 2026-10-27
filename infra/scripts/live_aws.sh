@@ -193,7 +193,9 @@ EOF
 }
 
 cmd_replay_s3() {   # S3_RUN_TARBALL SCENE - replay an EXISTING recording in-region (no local download; collab60d)
-  local tarball="$1" scene="$2"
+  # ARIADNE_REPLAY_RECORDING_URI: the run's inputs.mcap when it was archived apart (ARIADNE_ARCHIVE_RECORDING=separate);
+  # ARIADNE_PROFILE / ARIADNE_REPLAY_PASSES are passed to live.sh replay.
+  local tarball="$1" scene="$2" rec="${ARIADNE_REPLAY_RECORDING_URI:-}"
   local refs; refs="$(cmd_push)"
   local uri; uri="$(cmd_payload "$scene")"
   local script="$REPO_ROOT/build/live_payload/replays3-$(date -u +%Y%m%dT%H%M%SZ).sh"
@@ -205,9 +207,12 @@ mkdir -p /tmp/runsrc build/live/runs
 aws s3 cp $tarball - | tar xz -C /tmp/runsrc
 src=\$(ls -d /tmp/runsrc/build/live/runs/live-* | tail -1)
 rm -rf "\$src/replay1" "\$src/replay2" "\$src"/replay*.log "\$src/replay_check.json"
+if [ -n '$rec' ]; then   # beside the run's manifest, where live.sh replay looks for it
+  aws s3 cp '$rec' "\$(dirname "\$(ls -d "\$src"/*/manifest.yaml | head -1)")/inputs.mcap" --only-show-errors
+fi
 cp -a "\$src" build/live/runs/
 run=build/live/runs/\$(basename "\$src")
-ARIADNE_RT_MEM=\${ARIADNE_RT_MEM:-20g} infra/scripts/live.sh replay "\$run" $scene > \$R/replay.log 2>&1 || echo "replay_check_failed" >> \$R/replay.log
+ARIADNE_PROFILE=${ARIADNE_PROFILE:-0} ARIADNE_REPLAY_PASSES=${ARIADNE_REPLAY_PASSES:-2} ARIADNE_RT_MEM=\${ARIADNE_RT_MEM:-20g} infra/scripts/live.sh replay "\$run" $scene > \$R/replay.log 2>&1 || echo "replay_check_failed" >> \$R/replay.log
 cp "\$run/replay_check.json" \$R/ 2>/dev/null || true
 tar czf \$R/replays.tar.gz "\$run"/replay1 "\$run"/replay2 "\$run"/replay*.log 2>/dev/null || true
 EOF

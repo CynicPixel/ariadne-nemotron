@@ -346,8 +346,10 @@ cmd_replay() {
     --image "$(docker image inspect "$CORE_IMAGE" --format '{{.Id}}')"
   local rp_ld=()
   [ -d "$REPO_ROOT/build/ort/lib" ] && rp_ld=(-e LD_LIBRARY_PATH=/work/build/ort/lib)
-  for i in 1 2; do
-    docker run --rm "${rp_ld[@]}" --memory="${ARIADNE_RT_MEM:-4g}" --memory-swap="${ARIADNE_RT_MEM:-4g}" -u "$U" -v "$REPO_ROOT":/work -w /work \
+  # ARIADNE_REPLAY_PASSES=1: one pass, for a profile only (the replay check needs 2); ARIADNE_PROFILE=1 writes
+  # profile.jsonl in each replay dir.
+  for i in $(seq 1 "${ARIADNE_REPLAY_PASSES:-2}"); do
+    docker run --rm "${rp_ld[@]}" -e ARIADNE_PROFILE="${ARIADNE_PROFILE:-0}" --memory="${ARIADNE_RT_MEM:-4g}" --memory-swap="${ARIADNE_RT_MEM:-4g}" -u "$U" -v "$REPO_ROOT":/work -w /work \
       --env-file "$REPO_ROOT/$run/replay_identity.env" "$CORE_IMAGE" build/docker/cpp/runtime/ariadne_live \
       --scene "$scene" --perception-config "$perception_cfg" --slam-config "$slam_cfg" "${imu_noise_arg[@]}" \
       --mission-config "$mission_cfg" --live-config "$cfg" \
