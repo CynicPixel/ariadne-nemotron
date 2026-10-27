@@ -26,6 +26,7 @@
 #include "collaboration/comms/comms_node.hpp"
 #include "collaboration/protocol/collab_node.hpp"
 #include "runtime/live/a1_planner.hpp"
+#include "runtime/live/agent_worker.hpp"
 #include "runtime/live/collab_live.hpp"
 #include "runtime/live/lockstep_gate.hpp"
 #include "runtime/live/sensor_horizon.hpp"
@@ -185,6 +186,7 @@ struct KfRec {
     cv::Mat Z, S;   // CV_32F, half resolution, fp16-rounded exactly as the spool stores them
     double fx = 0, fy = 0, cx = 0, cy = 0;
     std::vector<cv::Point2f> track_px;   // the tracker's left-pixel observations (full-res; console overlay)
+    bool mapped = false;   // demo: already integrated by the agent's worker at delivery (Z/S moved there)
 };
 
 cv::Mat HalfAsSpool(const cv::Mat& f32) {   // KeyframeSpool::WriteHalf + ReadHalf, without the PNG round trip
@@ -770,6 +772,11 @@ int main(int argc, char** argv) {
             double tau_s = 10.0, timeout_s = 10.0;
             int max_options = 8;
             core::FrameTag g_tag{0, 0};                               // G = the world frame, agreed at the briefing
+            // planner_k is touched ONLY on workers[k] (agent_worker.hpp): integration, the plan, the route.
+            // eager_map (demo, no shadow map): keyframes are integrated at delivery, not at the next decision.
+            bool eager_map = false;
+            std::atomic<size_t> rays_async{0};
+            std::deque<live::AgentWorker> workers;   // LAST: destroyed (drained, joined) before the planners
         };
         std::unique_ptr<MaState> ma;
         if (lc.multiagent.enabled) {
@@ -796,6 +803,7 @@ int main(int argc, char** argv) {
             ma->last_kf.resize(size_t(NA));
             for (int k = 0; k < NA; ++k) {
                 ma->planners.emplace_back(mc, brief, p4, policy, lc.autonomous_threshold, NA);
+                ma->workers.emplace_back();
                 ma->exporters.emplace_back(k, p4brief.grid);
                 ma->layers.emplace_back(k, NA + 1, p4brief.grid);
                 const core::SE3& T = brief.T_W_O[size_t(k)];
@@ -844,6 +852,7 @@ int main(int argc, char** argv) {
             shadow = std::make_unique<planning::Phase4Planner>(sb, sp);
             shadow_trav = sp.trav, shadow_grid = sb.grid;
         }
+        if (ma) ma->eager_map = lc.demo && !shadow;   // the shadow map needs Z/S at the decision: keep it inline
         const int64_t end_ns = int64_t(std::llround(lc.end_s * 1e9));
         const int64_t replan_ns = int64_t(std::llround(mc.replan_s * 1e9));
         // D166 pacing: the next sub-step is requested once consumption is within grace of the last target.
@@ -873,7 +882,8 @@ int main(int argc, char** argv) {
             stack["agents"] = NA;
             stack["sensor_policy"] = (is_live && lc.demo && !lc.lockstep) ? "latest_stereo" : "lossless";
             stack["input_order"] = (is_live && lc.demo && !lc.lockstep) ? "arrival" : "timestamp_watermark";
-            stack["mapping_owner"] = ma ? "per_agent_mission" : (lc.demo ? "central_background" : "central_mission");
+            stack["mapping_owner"] = ma ? (ma->eager_map ? "per_agent_worker_at_delivery" : "per_agent_worker_at_decision")
+                                         : (lc.demo ? "central_background" : "central_mission");
             stack["collaboration_enabled"] = bool(ma && lc.collab.enabled);
             stack["allocation_identity"] = "broker_and_members_v1";
             stack["chooser"] = lc.chooser;
@@ -1250,6 +1260,19 @@ int main(int argc, char** argv) {
                 std::ofstream((run_dir / "snapshots" / ("cam_" + std::to_string(k) + ".json")).string()) << j.str();
             }
             if (splat) splat->OnKf(r, rgb);   // D220: bounded, drop-oldest, never blocks this thread
+            if (ma && ma->eager_map) {   // demo: integrate now on worker_k; the mission keeps only the bookkeeping
+                core::SE3 T_W_O;
+                {
+                    std::lock_guard<std::mutex> lk2(ma->two_mu);
+                    T_W_O = brief.T_W_O[size_t(k)];
+                }
+                const live::KeyframeInput ki{r.agent, r.id, r.t_ns, T_W_O * r.T_O_C, std::move(r.Z), std::move(r.S),
+                                             r.fx, r.fy, r.cx, r.cy};
+                ma->workers[size_t(k)].Post([m = ma.get(), k, ki] {
+                    m->rays_async += m->planners[size_t(k)].Integrate(ki);
+                });
+                r.mapped = true;
+            }
             AgentLane& L = lanes[k];
             std::lock_guard<std::mutex> lk(L.mu);
             L.kf_times.push_back(r.t_ns);
@@ -1665,7 +1688,9 @@ int main(int argc, char** argv) {
                         // poses) and its own CollabNode (radio pose in W_self = O_k; the odometry edge is carried
                         // for the record - coordination-only mode runs no SLAM on it).
                         const auto k = size_t(r.agent);
-                        rays += ma->planners[k].Integrate(ki);
+                        // On worker_k, in batch order: agents integrate in parallel, each in the old sequence.
+                        if (!r.mapped)
+                            ma->workers[k].Post([m = ma.get(), k, ki] { m->rays_async += m->planners[k].Integrate(ki); });
                         if (!ma->collab) {   // D174: with the fleet, keyframes enter ONLY via Release (#ckf)
                             std::optional<ac::OdometryEdge> odo;
                             if (ma->last_kf[k]) odo = ac::OdometryEdge{ma->last_kf[k]->first,
@@ -1680,6 +1705,10 @@ int main(int argc, char** argv) {
                     }
                     if (shadow) shadow->Integrate(ki.agent, ki.t_ns, live::ToDepthFrame(ki));
                     ++integrated[r.agent];
+                }
+                if (ma) {   // the decision sees every keyframe before T (and, demo, whatever was delivered since)
+                    for (auto& w : ma->workers) w.Wait();
+                    rays += ma->rays_async.exchange(0);
                 }
             }
             pmark(1);   // integrate done
@@ -1902,9 +1931,7 @@ int main(int argc, char** argv) {
                 patches_out.resize(size_t(NA));
                 ma_picks.resize(size_t(NA));
                 {
-                    std::vector<std::thread> workers;
-                    workers.reserve(size_t(NA));
-                    for (int k = 0; k < NA; ++k) workers.emplace_back([&, k] {
+                    for (int k = 0; k < NA; ++k) ma->workers[size_t(k)].Post([&, k] {
                         const auto comp = ma_comp(k);
                         const auto component = allocation_component(k);
                         const uint32_t epoch = component.epoch;
@@ -1948,7 +1975,7 @@ int main(int argc, char** argv) {
                                                               ma->broker.range_m, ma->tau_s)
                             : multi::ApplyConsensus(c, k, epoch, T, ma->timeout_s, opts, ma->broker.r_same);
                     });
-                    for (auto& w : workers) w.join();
+                    for (auto& w : ma->workers) w.Wait();
                 }
                 pmark(5);   // plan fork-join done
                 // (5) Sends, serial in ascending id: the seeded link sees one deterministic order, and CommsNode
@@ -2446,8 +2473,10 @@ int main(int argc, char** argv) {
                     const auto g = po.goal_xy;
                     const bool same = current[k].set && std::hypot(g.first - current[k].gx, g.second - current[k].gy) < lc.refused_radius_m;
                     current[k] = {true, g.first, g.second, same ? current[k].since_ns : T, pick_reason[k]};
-                    auto [path, face_yaw] = ma ? ma->planners[size_t(k)].Route(plan_out, k, pick, pd.ac)
-                                               : planner->Route(plan_out, k, pick, pd.ac);
+                    std::pair<std::vector<std::pair<double, double>>, double> routed;
+                    if (ma) ma->workers[size_t(k)].Run([&] { routed = ma->planners[size_t(k)].Route(plan_out, k, pick, pd.ac); });
+                    else routed = planner->Route(plan_out, k, pick, pd.ac);
+                    auto [path, face_yaw] = std::move(routed);
                     if (lc.demo && path.size() > 1) {   // D169: never backtrack to where the agent was at plan time
                         core::SE3 latest;
                         bool have_latest = false;
