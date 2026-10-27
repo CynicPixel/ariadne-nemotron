@@ -178,6 +178,8 @@ private:
     Esdf esdf_;
     TravColumns trav_cols_;   // cached per-column traversability; only columns near new map changes are recomputed
     cv::Mat trav_dirty_;      // CV_8U grid mask: columns to recompute at the next PlanMaps (empty = all)
+    SupportCounts support_;   // cached body-support counts (egress.hpp), recounted where support_dirty_ is set
+    cv::Mat support_dirty_;   // CV_8U grid mask, as trav_dirty_ (the counts read only the map, never the ESDF)
     FrontierSet3D fr_;
     EgressPlanner egress_;
     std::vector<std::vector<core::Vec3>> track_;   // per agent

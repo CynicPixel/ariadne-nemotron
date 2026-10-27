@@ -25,9 +25,25 @@ namespace ariadne::planning {
 
 /// CV_32F in [0, 1] on the grid: observed fraction of a vertical capsule of radius `body.rho` whose axis
 /// spans [body.axis_lo, body.axis_hi] (m), counting only voxel layers whose centre lies in [band_lo, band_hi].
-/// Voxels outside the map count as unobserved. Per layer: the known mask convolved with the layer's disc.
+/// Voxels outside the map count as unobserved. Per layer: the known mask convolved with the layer's disc, counted
+/// exactly in integers (count / total, one rounding), so a partial recompute equals a full one bit for bit.
 cv::Mat BodySupport(const TsdfMap& map, const GridFrame& g, const BodyCapsule& body, double band_lo = -1e9,
                     double band_hi = 1e9);
+
+/// The live planner's cache: the integer known-voxel count of every column's envelope. A column's count reads the
+/// map only within BodySupportReach voxels of itself in x-y, so after Integrate only columns that close to a dirty
+/// block can change.
+struct SupportCounts {
+    cv::Mat count;   // CV_32S, the grid's size
+    int total = 0;   // envelope voxels (the same for every column)
+    bool Empty() const { return count.empty(); }
+};
+int BodySupportReach(const BodyCapsule& body, double voxel);
+/// Recount the columns where `mask` (CV_8U, grid-sized) is nonzero; an empty mask or empty `out` = every column.
+void UpdateSupportCounts(const TsdfMap& map, const GridFrame& g, const BodyCapsule& body, double band_lo,
+                         double band_hi, const cv::Mat& mask, SupportCounts* out);
+/// count / total as CV_32F in [0, 1] (all zero when the band holds no envelope voxel).
+cv::Mat SupportFromCounts(const SupportCounts& c);
 
 struct EgressWeights {
     double w_u = 1, w_r = 0, w_c = 1;   // fixed a priori (EGRESS_4.5 §2); w_r = 0 unless D112 passes

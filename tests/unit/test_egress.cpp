@@ -7,7 +7,9 @@
 #include "planning/volumetric/tsdf_map.hpp"
 
 #include <gtest/gtest.h>
+#include <opencv2/imgproc.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <limits>
 #include <queue>
@@ -236,4 +238,82 @@ TEST(Egress, BodySupportByHand) {
     const cv::Mat sb = BodySupport(map, g, body, -1e9, 1.0);
     EXPECT_NEAR(sb.at<float>(20, 20), 1.0, 1e-6);
     EXPECT_LT(sb.at<float>(0, 0), 0.5f);   // a corner column: three quarters of its disc lies outside the map
+}
+
+namespace {
+// The previous implementation (per layer: the known mask filter2D'd with the layer's disc, summed in float): the
+// reference the exact counts must match to float precision.
+cv::Mat ConvolvedSupport(const TsdfMap& map, const GridFrame& g, const BodyCapsule& body) {
+    const double vox = map.Voxel();
+    const int cx0 = int(std::lround(g.ox / vox)), cy0 = int(std::lround(g.oy / vox)), R = int(std::ceil(body.rho / vox));
+    cv::Mat sum = cv::Mat::zeros(g.rows, g.cols, CV_32F), known(g.rows, g.cols, CV_32F), conv;
+    double total = 0;
+    for (int z = int(std::floor((body.axis_lo - body.rho) / vox)); z <= int(std::floor((body.axis_hi + body.rho) / vox)); ++z) {
+        const double zc = (z + 0.5) * vox;
+        const double dz = zc < body.axis_lo ? body.axis_lo - zc : (zc > body.axis_hi ? zc - body.axis_hi : 0.0);
+        const double r2 = body.rho * body.rho - dz * dz;
+        if (r2 < 0) continue;
+        cv::Mat disc = cv::Mat::zeros(2 * R + 1, 2 * R + 1, CV_32F);
+        for (int i = -R; i <= R; ++i)
+            for (int j = -R; j <= R; ++j)
+                if ((i * i + j * j) * vox * vox <= r2 + 1e-12) disc.at<float>(i + R, j + R) = 1.f;
+        if (cv::sum(disc)[0] == 0) continue;
+        for (int r = 0; r < g.rows; ++r)
+            for (int c = 0; c < g.cols; ++c) known.at<float>(r, c) = map.State({cx0 + c, cy0 + r, z}) != kUnknown ? 1.f : 0.f;
+        cv::filter2D(known, conv, CV_32F, disc, cv::Point(-1, -1), 0, cv::BORDER_CONSTANT);
+        sum += conv;
+        total += cv::sum(disc)[0];
+    }
+    return sum / total;
+}
+
+void RandomVoxels(TsdfMap* map, std::mt19937* rng, int n, int x0, int x1, int y0, int y1) {
+    std::uniform_int_distribution<int> X(x0, x1), Y(y0, y1), Z(-8, 40);
+    for (int k = 0; k < n; ++k) map->SetVoxel({X(*rng), Y(*rng), Z(*rng)}, TsdfVoxel{0.1f, 1.f});
+}
+}  // namespace
+
+TEST(Egress, BodySupportCountsMatchTheConvolution) {
+    TsdfParams tp;
+    TsdfMap map(tp);
+    std::mt19937 rng(7);
+    RandomVoxels(&map, &rng, 20000, -5, 64, -5, 54);
+    GridFrame g;
+    g.ox = 0, g.oy = 0, g.cell = 0.05, g.cols = 60, g.rows = 50;
+    const BodyCapsule body{0.40, 0.45, 1.40};
+    const cv::Mat s = BodySupport(map, g, body), ref = ConvolvedSupport(map, g, body);
+    double worst = 0;
+    for (int r = 0; r < g.rows; ++r)
+        for (int c = 0; c < g.cols; ++c) worst = std::max(worst, std::abs(double(s.at<float>(r, c)) - ref.at<float>(r, c)));
+    EXPECT_LT(worst, 1e-5);
+    EXPECT_GT(cv::countNonZero(s > 0.05f), 1000) << "the random map must give support, or this proves little";
+}
+
+TEST(Egress, PartialRecountEqualsAFullCountBitForBit) {
+    // As the live planner: count once, change the map in a few places, recount only the columns within
+    // BodySupportReach of the changed voxels; the counts must equal a fresh full count exactly.
+    TsdfParams tp;
+    TsdfMap map(tp);
+    std::mt19937 rng(11);
+    RandomVoxels(&map, &rng, 8000, 0, 79, 0, 69);
+    GridFrame g;
+    g.ox = 0, g.oy = 0, g.cell = 0.05, g.cols = 80, g.rows = 70;
+    const BodyCapsule body{0.40, 0.45, 1.40};
+    SupportCounts cache;
+    UpdateSupportCounts(map, g, body, -1e9, 1e9, cv::Mat(), &cache);
+    const int m = BodySupportReach(body, 0.05);
+    for (int round = 0; round < 4; ++round) {
+        cv::Mat dirty = cv::Mat::zeros(g.rows, g.cols, CV_8U);
+        for (int patch = 0; patch < 2; ++patch) {
+            const int x = int(rng() % 70), y = int(rng() % 60);
+            RandomVoxels(&map, &rng, 300, x, x + 7, y, y + 7);
+            dirty(cv::Range(std::max(y - m, 0), std::min(y + 8 + m, g.rows)),
+                  cv::Range(std::max(x - m, 0), std::min(x + 8 + m, g.cols))).setTo(1);
+        }
+        UpdateSupportCounts(map, g, body, -1e9, 1e9, dirty, &cache);
+        SupportCounts full;
+        UpdateSupportCounts(map, g, body, -1e9, 1e9, cv::Mat(), &full);
+        ASSERT_EQ(full.total, cache.total);
+        EXPECT_EQ(cv::countNonZero(full.count != cache.count), 0) << "round " << round;
+    }
 }

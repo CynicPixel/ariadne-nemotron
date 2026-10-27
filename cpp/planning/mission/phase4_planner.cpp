@@ -189,6 +189,15 @@ size_t Phase4Planner::Integrate(int agent, int64_t /*t_ns*/, const DepthFrame& f
             if (c0 <= c1 && r0 <= r1) trav_dirty_(cv::Range(r0, r1 + 1), cv::Range(c0, c1 + 1)).setTo(1);
         }
     }
+    if (!dirty.empty() && !support_dirty_.empty()) {   // empty = every column is already pending
+        const int m = BodySupportReach(p_.trav.responder, map_.Voxel());
+        const int cx0 = int(std::lround(b_.grid.ox / map_.Voxel())), cy0 = int(std::lround(b_.grid.oy / map_.Voxel()));
+        for (const auto& bk : dirty) {
+            const int c0 = std::max(bk.x * kBlockSide - m - cx0, 0), c1 = std::min((bk.x + 1) * kBlockSide - 1 + m - cx0, b_.grid.cols - 1);
+            const int r0 = std::max(bk.y * kBlockSide - m - cy0, 0), r1 = std::min((bk.y + 1) * kBlockSide - 1 + m - cy0, b_.grid.rows - 1);
+            if (c0 <= c1 && r0 <= r1) support_dirty_(cv::Range(r0, r1 + 1), cv::Range(c0, c1 + 1)).setTo(1);
+        }
+    }
     if (!dirty.empty()) {
         Idx3 lo{1 << 30, 1 << 30, 1 << 30}, hi{-(1 << 30), -(1 << 30), -(1 << 30)};
         for (const auto& bk : dirty) {
@@ -277,7 +286,11 @@ void Phase4Planner::PlanMaps(Phase4Plan* out) {
     clk.Lap("trav_cols");
     out->maps = FinishTraversability(trav_cols_, b_.grid, map_.Voxel(), esdf_.DMax(), p_.trav);
     clk.Lap("trav_finish");
-    out->support = BodySupport(map_, b_.grid, p_.trav.responder, p_.support_band_lo, p_.support_band_hi);
+    // Bit-equal to BodySupport (test): only columns near new map changes are recounted.
+    UpdateSupportCounts(map_, b_.grid, p_.trav.responder, p_.support_band_lo, p_.support_band_hi, support_dirty_,
+                        &support_);
+    support_dirty_ = cv::Mat::zeros(b_.grid.rows, b_.grid.cols, CV_8U);
+    out->support = SupportFromCounts(support_);
     clk.Lap("support");
     EgressWeights w = p_.egress;
     if (!p_.risk_calibrated) w.w_r = 0;   // invariant: the [PROXY] enters only after D112's bar

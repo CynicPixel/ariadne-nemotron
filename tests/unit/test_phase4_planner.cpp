@@ -372,4 +372,8 @@ TEST(Phase4Planner, CachedTraversabilityEqualsAFullRecomputeBitForBit) {
     EXPECT_TRUE(Same(last.maps.clear_a, full.clear_a));
     EXPECT_TRUE(Same(last.maps.risk, full.risk));
     EXPECT_GT(cv::countNonZero(full.slab == kFree), 100) << "the views must observe free space, or this proves little";
+    // Body support is cached the same way (recounted only near new map changes): equal to a full count.
+    const cv::Mat support = BodySupport(P.Map(), b.grid, prm.trav.responder, prm.support_band_lo, prm.support_band_hi);
+    EXPECT_TRUE(Same(last.support, support));
+    EXPECT_GT(cv::countNonZero(support > 0.1f), 100) << "the views must give support, or this proves little";
 }
