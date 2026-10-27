@@ -28,7 +28,7 @@ using namespace ariadne;
 namespace live = ariadne::runtime::live;
 
 int main(int argc, char** argv) {
-    std::string socket_path, place_onnx, place_size = "640x360", aliked_onnx, lightglue_onnx;
+    std::string socket_path, place_onnx, place_size = "640x360", aliked_onnx, lightglue_onnx, dnn_backend = "cv_dnn";
     int agent = 0, threads = 0;
     double keep_s = 120.0;
     uint32_t n_features = 1024;
@@ -45,6 +45,7 @@ int main(int argc, char** argv) {
         else if (k == "--threads") threads = std::stoi(v);
         else if (k == "--keep-s") keep_s = std::stod(v);
         else if (k == "--n-features") n_features = uint32_t(std::stoul(v));
+        else if (k == "--dnn-backend") dnn_backend = v;   // ALIKED: cv_dnn | ort_cuda | ort_cpu
         else { std::fprintf(stderr, "unknown argument %s\n", k.c_str()); return 2; }
     }
     if (socket_path.empty() || place_onnx.empty() || aliked_onnx.empty() || lightglue_onnx.empty() || threads <= 0) {
@@ -62,7 +63,10 @@ int main(int argc, char** argv) {
         hp.aliked_onnx = aliked_onnx;
         hp.lightglue_onnx = lightglue_onnx;
         hp.width = 1280, hp.height = 720;   // the D90 sim export
+        hp.backend = dnn_backend;
         const perception::HardPairMatcher aliked(hp);
+        for (const auto& r : aliked.Records())   // the backend that actually runs (log which ran)
+            std::fprintf(stderr, "ariadne_collab_worker %d: %s via %s\n", agent, r.model.c_str(), r.engine.c_str());
         runtime::CollabFeatureExtractor x(place, aliked, keep_s, /*evict_slack_s=*/60.0);   // D179: memory only, never the answer
 
         // Accept both peers on one listening socket.

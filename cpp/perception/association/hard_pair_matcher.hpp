@@ -30,6 +30,9 @@
 //     calling thread loads and runs its own pair.
 // ---------------------------------------------------------------------------
 #include "perception/dnn/per_thread.hpp"
+#ifdef ARIADNE_HAVE_ORT
+#include "perception/dnn/ort_session.hpp"
+#endif
 
 #include <opencv2/core.hpp>
 #include <opencv2/features.hpp>
@@ -45,6 +48,10 @@ struct HardPairParams {
     int width = 752, height = 480;    // the ALIKED export's fixed input size
     std::string normalization = "upstream";   // upstream | opencv
     float min_score = 0.0f;           // on top of the graph's own filter (LightGlue filter_threshold 0.1)
+    // cv_dnn (default, the evidence path) | ort_cuda | ort_cpu: the same ONNX files through ONNX Runtime
+    // (ARIADNE_WITH_ORT builds; ort_session.hpp says why cv::dnn cannot reach the GPU for these graphs). The ORT
+    // path reproduces cv::ALIKED / cv::LightGlueMatcher's pre- and post-processing exactly (tested against them).
+    std::string backend = "cv_dnn";
 };
 
 struct HardPairFeatures {
@@ -78,8 +85,12 @@ private:
     struct Nets {
         cv::Ptr<cv::ALIKED> aliked;
         cv::Ptr<cv::LightGlueMatcher> lightglue;
+#ifdef ARIADNE_HAVE_ORT
+        std::unique_ptr<dnn::OrtNet> ort_aliked, ort_lightglue;
+#endif
     };
     void CheckSize(const cv::Mat& im) const;
+    void Detect(const cv::Mat& bgr, HardPairFeatures* f) const;
     HardPairParams p_;
     dnn::PerThread<Nets> nets_;
 };

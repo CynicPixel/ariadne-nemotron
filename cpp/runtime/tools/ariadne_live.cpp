@@ -115,6 +115,7 @@ struct LiveConfig {
         int worker_threads = 4;             // OpenCV threads per collab worker, pinned (output depends on it)
         double keep_s = 120;
         std::string place_onnx, place_size, aliked_onnx, lightglue_onnx;
+        std::string dnn_backend = "cv_dnn";   // ALIKED + LightGlue: cv_dnn | ort_cuda | ort_cpu (HardPairParams)
     } collab;
 };
 
@@ -172,6 +173,7 @@ LiveConfig LoadLive(const std::string& path) {
             c.collab.place_size = mo["place_size"].as<std::string>();
             c.collab.aliked_onnx = mo["aliked"].as<std::string>();
             c.collab.lightglue_onnx = mo["lightglue"].as<std::string>();
+            if (m["dnn_backend"]) c.collab.dnn_backend = m["dnn_backend"].as<std::string>();
         }
     }
     return c;
@@ -1357,7 +1359,10 @@ int main(int argc, char** argv) {
             hp.aliked_onnx = lc.collab.aliked_onnx;
             hp.lightglue_onnx = lc.collab.lightglue_onnx;
             hp.width = 1280, hp.height = 720;
+            hp.backend = lc.collab.dnn_backend;
             ma->lightglue = std::make_unique<perception::HardPairMatcher>(hp);
+            for (const auto& r : ma->lightglue->Records())   // the backend that actually runs (log which ran)
+                std::fprintf(stderr, "ariadne_live: hard-pair %s via %s\n", r.model.c_str(), r.engine.c_str());
             ma->edges_csv.open((run_dir / "collab_edges.csv").string());
             ma->edges_csv << "agent_a,kf_a,agent_b,kf_b,score,matches,essential_inliers,pnp_inliers,reason,"
                              "gt_err_t_m,gt_err_r_deg,gt_baseline_m,pose_err_deg\n";
@@ -1406,6 +1411,7 @@ int main(int argc, char** argv) {
                                          lc.collab.aliked_onnx.c_str(),              "--lightglue-onnx",
                                          lc.collab.lightglue_onnx.c_str(),           "--threads",
                                          wt.c_str(),             "--keep-s",         ks.c_str(),
+                                         "--dnn-backend",        lc.collab.dnn_backend.c_str(),
                                          nullptr};
                     ::execv(cas[0], const_cast<char**>(cas));
                     std::_Exit(127);

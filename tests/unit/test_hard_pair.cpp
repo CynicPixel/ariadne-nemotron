@@ -159,3 +159,64 @@ TEST(HardPair, SimRgbPathIsTheReferenceInputAndSeesAChannelSwap) {
         EXPECT_EQ(got, want);
     }
 }
+
+#ifdef ARIADNE_HAVE_ORT
+// The ONNX Runtime path (the live GPU route) must reproduce cv::dnn's on the same export: same keypoints (to float
+// round-off), same descriptors, and the same LightGlue matches. Run here on ORT's CPU provider, so it needs no GPU;
+// the CUDA provider runs the same graph and is checked by the GPU smoke test.
+TEST(HardPair, OrtPathReproducesCvDnnOnTheSimExport) {
+    const std::string dir = RefDir("ARIADNE_ALIKED_LG_SIM_REF");
+    REQUIRE_EXPORT(dir);
+    const cv::Size size(1280, 720);
+    HardPairParams pc = Params(dir, "upstream", size), po = pc;
+    po.backend = "ort_cpu";
+    const HardPairMatcher cvm(pc), ort(po);
+    EXPECT_EQ(ort.Records().front().engine, "onnxruntime_cpu");
+    for (const char* pair : {"sim_a0_f200_sim_a0_f205", "sim_a0_f700_sim_a0_f710"}) {
+        const std::string p(pair);
+        HardPairFeatures fc[2], fo[2];
+        for (int k = 0; k < 2; ++k) {
+            const std::string name = p.substr(k ? p.size() / 2 + 1 : 0, p.size() / 2);
+            const cv::Mat bgr = cv::imread((fs::path(dir) / ("input_" + name + ".png")).string(), cv::IMREAD_COLOR);
+            ASSERT_EQ(bgr.size(), size) << name;
+            cv::Mat rgb;
+            cv::cvtColor(bgr, rgb, cv::COLOR_BGR2RGB);
+            fc[k] = cvm.ExtractRgb(rgb), fo[k] = ort.ExtractRgb(rgb);
+            ASSERT_EQ(fc[k].keypoints.size(), fo[k].keypoints.size()) << name;
+            // The two runtimes may list the same top-K in a different order (ties in the score sort), so pair each
+            // cv::dnn keypoint with the ORT keypoint at the same position, then compare score and descriptor.
+            const size_t n = fc[k].keypoints.size();
+            size_t paired = 0;
+            double dsc = 0, dd = 0;
+            for (size_t i = 0; i < n; ++i) {
+                size_t best = n;
+                double bd = 1e-2;   // px
+                for (size_t j = 0; j < n; ++j) {
+                    const double d = cv::norm(fc[k].keypoints[i].pt - fo[k].keypoints[j].pt);
+                    if (d < bd) bd = d, best = j;
+                }
+                if (best == n) continue;
+                ++paired;
+                dsc = std::max(dsc, double(std::abs(fc[k].keypoints[i].response - fo[k].keypoints[best].response)));
+                dd = std::max(dd, cv::norm(fc[k].descriptors.row(int(i)), fo[k].descriptors.row(int(best)), cv::NORM_INF));
+            }
+            std::printf("[%s] ort vs cv::dnn: %zu keypoints, %zu at the same position, max |dscore| %.2e, max |ddesc| %.2e\n",
+                        name.c_str(), n, paired, dsc, dd);
+            EXPECT_GE(paired, n * 99 / 100) << name;
+            EXPECT_LT(dsc, 1e-3) << name;
+            EXPECT_LT(dd, 1e-3) << name;
+        }
+        // LightGlue on cv::dnn features through both backends: the same matches.
+        const auto mc = cvm.Match(fc[0], fc[1]), mo = ort.Match(fc[0], fc[1]);
+        std::set<std::pair<int, int>> a, b;
+        for (const auto& m : mc) a.insert({m.queryIdx, m.trainIdx});
+        for (const auto& m : mo) b.insert({m.queryIdx, m.trainIdx});
+        int both = 0;
+        for (const auto& x : a) both += int(b.count(x));
+        const double jac = double(both) / double(std::max<size_t>(1, a.size() + b.size() - size_t(both)));
+        std::printf("[%s] LightGlue cv::dnn %zu matches, ort %zu, Jaccard %.4f\n", pair, a.size(), b.size(), jac);
+        EXPECT_GT(a.size(), 100u) << pair;
+        EXPECT_GE(jac, 0.98) << pair;
+    }
+}
+#endif
