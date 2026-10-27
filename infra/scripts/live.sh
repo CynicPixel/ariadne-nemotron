@@ -341,9 +341,12 @@ cmd_replay() {
   grep -q '^chooser: *llm' "$REPO_ROOT/$cfg" && extra+=(--decisions "$run/$live_dir/trace.jsonl")
   [ -f "$REPO_ROOT/$run/planner_config.yaml" ] && extra+=(--planner-config "$run/planner_config.yaml")
   [ -f "$REPO_ROOT/$run/shadow_map_config.yaml" ] && extra+=(--shadow-map-config "$run/shadow_map_config.yaml")
+  # ARIADNE_REPLAY_PROFILE_ONLY=1: a newer runtime binary may replay the recording, for its profile only (recorded).
+  local id_args=()
+  [ "${ARIADNE_REPLAY_PROFILE_ONLY:-0}" = 1 ] && id_args=(--allow-binary-change)
   python3 "$REPO_ROOT/infra/scripts/live_identity.py" replay --run "$REPO_ROOT/$run" \
     --binary "$REPO_ROOT/build/docker/cpp/runtime/ariadne_live" \
-    --image "$(docker image inspect "$CORE_IMAGE" --format '{{.Id}}')"
+    --image "$(docker image inspect "$CORE_IMAGE" --format '{{.Id}}')" "${id_args[@]}"
   local rp_ld=()
   [ -d "$REPO_ROOT/build/ort/lib" ] && rp_ld=(-e LD_LIBRARY_PATH=/work/build/ort/lib)
   # ARIADNE_REPLAY_PASSES=1: one pass, for a profile only (the replay check needs 2); ARIADNE_PROFILE=1 writes

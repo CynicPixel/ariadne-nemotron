@@ -213,7 +213,7 @@ if [ -n '$rec' ]; then   # beside the run's manifest, where live.sh replay looks
 fi
 cp -a "\$src" build/live/runs/
 run=build/live/runs/\$(basename "\$src")
-ARIADNE_PROFILE=${ARIADNE_PROFILE:-0} ARIADNE_REPLAY_PASSES=${ARIADNE_REPLAY_PASSES:-2} ARIADNE_RT_MEM=\${ARIADNE_RT_MEM:-20g} infra/scripts/live.sh replay "\$run" $scene > \$R/replay.log 2>&1 || echo "replay_check_failed" >> \$R/replay.log
+ARIADNE_PROFILE=${ARIADNE_PROFILE:-0} ARIADNE_REPLAY_PASSES=${ARIADNE_REPLAY_PASSES:-2} ARIADNE_REPLAY_PROFILE_ONLY=${ARIADNE_REPLAY_PROFILE_ONLY:-0} ARIADNE_RT_MEM=\${ARIADNE_RT_MEM:-20g} infra/scripts/live.sh replay "\$run" $scene > \$R/replay.log 2>&1 || echo "replay_check_failed" >> \$R/replay.log
 cp "\$run/replay_check.json" \$R/ 2>/dev/null || true
 tar czf \$R/replays.tar.gz "\$run"/replay1 "\$run"/replay2 "\$run"/replay*.log 2>/dev/null || true
 EOF
