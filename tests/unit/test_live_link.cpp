@@ -323,3 +323,21 @@ TEST(LiveLink, PipelinedIngestMatchesFeedExactly) {
         same(f0[i].left_rgb, f1[i].left_rgb);
     }
 }
+
+TEST(LiveLink, DemoArrivalOrderDoesNotWaitForAnotherCameraOrReorderImu) {
+    live::Reorderer ro({"/a/imu", "/a/image", "/b/image"}, std::chrono::hours(1), true);
+    std::vector<std::pair<std::string, int64_t>> seen;
+    const auto accept = [&](live::StreamMessage m) { seen.emplace_back(m.topic, m.stamp_ns); };
+    ro.Push(Msg("/a/imu", 100), accept);
+    ASSERT_EQ(seen.size(), 1u);  // no camera has published
+    ro.Push(Msg("/a/imu", 110), accept);
+    ro.Push(Msg("/a/image", 90), accept);  // delayed image cannot delay future IMU
+    ro.Push(Msg("/a/imu", 120), accept);
+    ASSERT_EQ(seen.size(), 4u);
+    EXPECT_EQ(seen[1].second, 110);
+    EXPECT_EQ(seen[2].second, 90);
+    EXPECT_EQ(seen[3].second, 120);
+    ro.Flush(accept);
+    EXPECT_EQ(seen.size(), 4u);  // no hidden backlog
+    EXPECT_EQ(ro.released_on_timeout(), 0);
+}

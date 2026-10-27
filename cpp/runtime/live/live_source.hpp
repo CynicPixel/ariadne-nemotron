@@ -75,12 +75,20 @@ inline int64_t PeekStamp(const std::string& type, const std::vector<uint8_t>& b)
 
 class Reorderer {
 public:
-    explicit Reorderer(std::set<std::string> timed_topics, std::chrono::milliseconds hold_back = std::chrono::seconds(3))
-        : timed_(std::move(timed_topics)), hold_back_(hold_back) {}
+    explicit Reorderer(std::set<std::string> timed_topics, std::chrono::milliseconds hold_back = std::chrono::seconds(3),
+                       bool arrival_order = false)
+        : timed_(std::move(timed_topics)), hold_back_(hold_back), arrival_order_(arrival_order) {}
 
     /// Push one arrival; calls release(m) for every message now safe to release, in release order.
     template <typename F>
     void Push(StreamMessage m, F&& release) {
+        if (arrival_order_) {
+            // Demo sensors have independent consumers: a slow camera must not
+            // hold every agent's IMU behind a fleet-wide timestamp watermark.
+            Count(m.stamp_ns);
+            release(std::move(m));
+            return;
+        }
         const auto now = std::chrono::steady_clock::now();
         if (m.stamp_ns < 0) {   // untimed: released at once, in arrival order
             release(std::move(m));
@@ -156,6 +164,7 @@ private:
     };
     std::set<std::string> timed_;
     std::chrono::milliseconds hold_back_;
+    bool arrival_order_ = false;
     std::map<std::string, Latest> latest_;
     std::map<std::tuple<int64_t, std::string, uint64_t>, StreamMessage> held_;
     uint64_t arrival_ = 0;

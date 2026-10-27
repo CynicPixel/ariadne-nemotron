@@ -871,6 +871,7 @@ int main(int argc, char** argv) {
             stack["lockstep"] = lc.lockstep;
             stack["agents"] = NA;
             stack["sensor_policy"] = (is_live && lc.demo && !lc.lockstep) ? "latest_stereo" : "lossless";
+            stack["input_order"] = (is_live && lc.demo && !lc.lockstep) ? "arrival" : "timestamp_watermark";
             stack["mapping_owner"] = ma ? "per_agent_mission" : (lc.demo ? "central_background" : "central_mission");
             stack["collaboration_enabled"] = bool(ma && lc.collab.enabled);
             stack["allocation_identity"] = "broker_and_members_v1";
@@ -890,6 +891,8 @@ int main(int argc, char** argv) {
             std::ofstream(run_dir / "stack_manifest.yaml") << stack;
         }
         const auto wall_start = std::chrono::steady_clock::now();
+        std::atomic<int64_t> live_clock_ns{-1};
+        Lines control_age(run_dir / "control_age.jsonl");
         // D224 (A2's profiling ask): ARIADNE_PROFILE=1 writes profile.jsonl - one line per lockstep barrier, a
         // wall-clock decomposition of the barrier's stages. Default off; it only ADDS a file, never changes timing-
         // dependent behaviour, so digests are untouched either way.
@@ -902,6 +905,23 @@ int main(int argc, char** argv) {
                 pm[i] = std::chrono::steady_clock::now();
                 for (size_t j = i + 1; j < pm.size(); ++j) pm[j] = pm[i];   // unset later stages read as 0 ms
             }
+        };
+
+        const auto write_profile = [&](int64_t T, const char* kind) {
+            if (!profile) return;
+            pmark(8);
+            const auto ms = [&](size_t i, size_t j) {
+                return std::chrono::duration<double, std::milli>(pm[j] - pm[i]).count();
+            };
+            std::ostringstream po;
+            po.precision(8);
+            po << "{\"type\":\"" << kind << "\",\"t_s\":" << T * 1e-9
+               << ",\"clock_ns_at_end\":" << live_clock_ns.load()
+               << ",\"ms\":{\"integrate\":" << ms(0, 1)
+               << ",\"radio\":" << ms(1, 2) << ",\"drain\":" << ms(2, 3) << ",\"broker\":" << ms(3, 4)
+               << ",\"plan_fork\":" << ms(4, 5) << ",\"sends\":" << ms(5, 6) << ",\"merge\":" << ms(6, 7)
+               << ",\"decide_command\":" << ms(7, 8) << ",\"total\":" << ms(0, 8) << "}}";
+            profile->Put(po.str());
         };
 
         // --- topics (mission_live.json) -------------------------------------------------------------------
@@ -977,6 +997,13 @@ int main(int argc, char** argv) {
         auto SendCommand = [&](int agent, const runtime::ros_cdr::PoseArray& m) {
             if (!is_live) return;
             const auto bytes = runtime::ros_cdr::EncodePoseArray(m);
+            if (latest_stereo) {
+                control_age.Put("{\"agent\":" + std::to_string(agent) +
+                    ",\"decision_ns\":" + std::to_string(m.header.stamp.ns()) +
+                    ",\"clock_ns_at_send\":" + std::to_string(live_clock_ns.load()) +
+                    ",\"wall_s\":" + std::to_string(std::chrono::duration<double>(
+                        std::chrono::steady_clock::now() - wall_start).count()) + "}");
+            }
             std::lock_guard<std::mutex> lk(send_mu);
             if (!live::WriteFrame(fd, cmd_topic.at(agent), bytes.data(), bytes.size())) {
                 throw std::runtime_error("live: the ROS edge closed the link");
@@ -1068,7 +1095,7 @@ int main(int argc, char** argv) {
                 // D166: the wall-clock timeout skip made release order hardware-dependent under lockstep
                 // (~80 skips per 200 s run, at the barriers). Lockstep guarantees every timed topic reaches the
                 // watermark, so the hold is effectively infinite there; free-run keeps the configured hold.
-                live::Reorderer ro(timed, std::chrono::milliseconds(lc.lockstep ? 86400000 : lc.hold_back_ms));
+                live::Reorderer ro(timed, std::chrono::milliseconds(lc.lockstep ? 86400000 : lc.hold_back_ms), latest_stereo);
                 live::LinkFrame f;
                 uint64_t seen_gen = 0;
                 try {
@@ -1076,6 +1103,7 @@ int main(int argc, char** argv) {
                         if (f.topic[0] == '#') {
                             const std::string payload(f.payload.begin(), f.payload.end());
                             link_log.Put("{\"control\":\"" + f.topic + "\",\"payload\":" + payload + "}");
+                            if (f.topic == "#clock") live_clock_ns = YAML::Load(payload)["sim_ns"].as<int64_t>();
                             if (f.topic == "#ready") RunTo(substep_ns);   // lockstep: the world starts at the runtime's word (D166: one sub-step)
                             if (f.topic == "#run_to_ack") lockstep_log.Put("{\"ack\":" + payload + "}");
                             continue;
@@ -1179,7 +1207,8 @@ int main(int argc, char** argv) {
             std::ostringstream o;
             o.precision(6);
             o << "{\"agent\":" << k << ",\"t_s\":" << t_ns * 1e-9 << ",\"wait_s\":" << w << ",\"lock_s\":" << l
-              << ",\"track_s\":" << tr << "}";
+              << ",\"track_s\":" << tr << ",\"clock_ns_at_receive\":" << live_clock_ns.load()
+              << ",\"wall_s\":" << std::chrono::duration<double>(std::chrono::steady_clock::now() - wall_start).count() << "}";
             timing_log.Put(o.str());
         };
         auto deliver_kf = [&](int k, KfRec r, const cv::Mat& rgb) {
@@ -2461,6 +2490,7 @@ int main(int argc, char** argv) {
             // D165 lockstep: the world is paused at T; the commands are applied at T (the mover takes them while
             // paused) and answered BEFORE the world resumes. Every barrier resumes to T + replan, the last one too
             // (frames past end_s close the lanes).
+            if (latest_stereo) write_profile(T, "demo_decision");
             if (is_live && lc.lockstep) {
                 std::vector<std::pair<int, int64_t>> wait_for;   // (agent, command stamp) answers to have before resuming
                 for (int k = 0; k < NA; ++k) if (sent_at_T[k]) wait_for.push_back({k, T});
@@ -2490,19 +2520,7 @@ int main(int argc, char** argv) {
                 }
                 if (!all) ++answer_timeouts;
                 const double paused_s = std::chrono::duration<double>(std::chrono::steady_clock::now() - barrier_wall).count();
-                if (profile) {   // D224: the barrier's wall decomposition (ms), one line per lockstep barrier
-                    pmark(8);
-                    const auto ms = [&](size_t i, size_t j) {
-                        return std::chrono::duration<double, std::milli>(pm[j] - pm[i]).count();
-                    };
-                    std::ostringstream po;
-                    po.precision(5);
-                    po << "{\"type\":\"barrier\",\"t_s\":" << T * 1e-9 << ",\"ms\":{\"integrate\":" << ms(0, 1)
-                       << ",\"radio\":" << ms(1, 2) << ",\"drain\":" << ms(2, 3) << ",\"broker\":" << ms(3, 4)
-                       << ",\"plan_fork\":" << ms(4, 5) << ",\"sends\":" << ms(5, 6) << ",\"merge\":" << ms(6, 7)
-                       << ",\"decide_command\":" << ms(7, 8) << ",\"total\":" << ms(0, 8) << "}}";
-                    profile->Put(po.str());
-                }
+                write_profile(T, "barrier");
                 std::string at_js;
                 for (int k = 0; k < NA; ++k) at_js += (k ? "," : "") + std::to_string(at[size_t(k)]);
                 lockstep_log.Put("{\"T_ns\":" + std::to_string(T) + ",\"applied_ns\":[" + at_js +

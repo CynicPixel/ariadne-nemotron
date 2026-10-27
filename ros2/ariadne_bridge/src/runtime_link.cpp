@@ -103,9 +103,17 @@ public:
             "/clock", rclcpp::QoS(100), [this](const rosgraph_msgs::msg::Clock::SharedPtr m) {
                 const int64_t t = int64_t(m->clock.sec) * 1000000000 + m->clock.nanosec;
                 clock_ns_ = t;
-                std::lock_guard<std::mutex> lk(lat_mu_);
-                clock_ring_.emplace_back(t, std::chrono::steady_clock::now());
-                if (clock_ring_.size() > 8192) clock_ring_.pop_front();
+                const auto now = std::chrono::steady_clock::now();
+                {
+                    std::lock_guard<std::mutex> lk(lat_mu_);
+                    clock_ring_.emplace_back(t, now);
+                    if (clock_ring_.size() > 8192) clock_ring_.pop_front();
+                }
+                if (asynchronous_ && now - last_clock_sent_ >= std::chrono::milliseconds(100)) {
+                    const std::string js = "{\"sim_ns\":" + std::to_string(t) + "}";
+                    Send("#clock", reinterpret_cast<const uint8_t*>(js.data()), js.size());
+                    last_clock_sent_ = now;
+                }
             }, clock_options);
         if (asynchronous_) sender_ = std::thread([this] { SendQueued(); });
         reader_ = std::thread([this] { ReadCommands(); });
@@ -407,6 +415,7 @@ private:
     std::map<std::string, Lat> lat_;                                                     // guarded by lat_mu_
     long lat_skipped_ = 0;                                                               // guarded by lat_mu_
     std::atomic<int64_t> clock_ns_{-1};
+    std::chrono::steady_clock::time_point last_clock_sent_{};  // control-group-owned
     rclcpp::TimerBase::SharedPtr ready_timer_, stats_timer_;
 };
 

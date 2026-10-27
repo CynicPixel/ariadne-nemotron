@@ -144,3 +144,27 @@ Instance launch is confirmed; application startup and live results are pending.
 The exact launch metadata is in `evaluation/runs/live_pipeline_final/smoke100_launch.json`.
 The hardware change further prevents attributing any improvement solely to the
 callback changes; first establish an operating live feedback loop.
+
+
+### 100-s result and next RCA step
+
+Run `20261026T214842Z-gpu-beb510` completed: 175.572 wall seconds, RTF 0.569567,
+5.399/5.251 m recorded GT translation, 145/125 integrated keyframes and 281 GPU
+reconstruction keyframes. The feedback audit still reports median command age
+23.701 simulated seconds, maximum 37.701 within the 100-s mission. Later commands
+were applied after the mission horizon; those are counted separately.
+
+Inspection found two additional integration problems: demo messages still passed
+through a fleet-wide timestamp watermark, and `ARIADNE_PROFILE` was not forwarded
+into the runtime container (whose profile writer also only ran under lockstep).
+The next patch releases demo sensor arrivals immediately, retaining per-topic
+transport order and bounded stereo queues. Evidence mode retains its watermark.
+It adds 10 Hz wall-rate simulator-clock telemetry, estimator receipt age, command
+send age, and live decision-stage profiling. These measurements distinguish input,
+estimation and planning delay from downstream command transport. The watermark is
+a confirmed cross-agent dependency; its share of the measured delay is unproven.
+
+Arrival-order patch validation: C++ runtime and ROS bridge built successfully;
+30 focused tests passed, including the new case where an absent second camera
+cannot hold the first agent's IMU. Existing timestamp-watermark and lockstep tests
+remain enabled. Cloud comparison is pending; no latency reduction is claimed yet.

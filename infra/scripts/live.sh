@@ -226,6 +226,7 @@ cmd_run() {
     --binary "$REPO_ROOT/build/docker/cpp/runtime/ariadne_live" --image "$runtime_image" \
     --commit "$runtime_commit" --dirty "$runtime_dirty"
   CONTAINERS+=("$(docker run -d --name "ariadne-live-$id-rt" --memory="${ARIADNE_RT_MEM:-6g}" --memory-swap="${ARIADNE_RT_MEM:-6g}" -u "$U" -v "$REPO_ROOT":/work -w /work "${recon_env[@]}" \
+    -e ARIADNE_PROFILE="${ARIADNE_PROFILE:-0}" \
     -e ARIADNE_GIT_COMMIT="$runtime_commit" \
     -e ARIADNE_GIT_DIRTY="$runtime_dirty" \
     -e ARIADNE_IMAGE_DIGEST="$runtime_image" \
