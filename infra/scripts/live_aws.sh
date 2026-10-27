@@ -43,6 +43,8 @@ INSTANCE_ARGS=()
 if [[ -n "${LIVE_AWS_INSTANCE_TYPE:-}" ]]; then
   INSTANCE_ARGS=(--type "$LIVE_AWS_INSTANCE_TYPE")
 fi
+# LIVE_AWS_AZ pins the spot AZ (spinup.sh --az): the cheapest AZ can be out of g5 capacity.
+[[ -n "${LIVE_AWS_AZ:-}" ]] && INSTANCE_ARGS+=(--az "$LIVE_AWS_AZ")
 
 # local image -> ECR repo
 declare -A REPO=([ariadne/sim:dev]=ariadne/ariadne-sim [ariadne/core-dev:dev]=ariadne/ariadne-core [ariadne-console:1]=ariadne/ariadne-console [ariadne-orchestrator:1]=ariadne/ariadne-orchestrator [ariadne-recon:1]=ariadne/ariadne-gpu)
