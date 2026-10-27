@@ -147,6 +147,11 @@ Phase4Planner::Phase4Planner(const Phase4Briefing& b, const Phase4Params& p, int
     : b_(b), p_(p), map_(p.tsdf), esdf_(p.tsdf.voxel, p.trav.responder.rho + 2 * p.tsdf.voxel), fr_(p.frontiers),
       egress_(b.target, b.entrances, b.grid.cell) {
     if (n_agents < 1) throw std::invalid_argument("Phase4Planner: n_agents must be >= 1");
+    // The mission grid bounds what the planner can use: size the ESDF to it once, so exploring never forces a
+    // global rebuild (values are the same either way, esdf.hpp).
+    esdf_.Reserve(map_.ToVoxel(core::Vec3(b.grid.ox, b.grid.oy, 0.0)),
+                  map_.ToVoxel(core::Vec3(b.grid.ox + b.grid.cols * b.grid.cell, b.grid.oy + b.grid.rows * b.grid.cell,
+                                          b.z_max_m)));
     track_.resize(size_t(n_agents));
     last_pick_.assign(size_t(n_agents), -1);
     shared_.assign(size_t(n_agents), std::vector<size_t>(size_t(n_agents), 0));

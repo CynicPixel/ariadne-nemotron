@@ -20,13 +20,19 @@
 // agent (blocked = occupied). Capped at d_max.
 //
 // Incremental, never global per keyframe: with a capped field a change at a
-// voxel moves only voxels within d_max of it, so an update recomputes the box
-// dirty (+) k, each x-y tile reading sites from its own k margin, and writes back
-// only the box. Exact for the capped field (bit-equal to a rebuild; tested).
+// voxel moves only voxels within d_max of it, so an update recomputes only the
+// x-y tiles (kUpdateTile voxels) that a dirty block dilated by k touches, each
+// tile reading sites from its own k margin, and writes back only the tile. Exact
+// for the capped field (bit-equal to a rebuild; tested). A frustum's dirty set
+// fills a fraction of its bounding box, so tiles beat the one-box update.
+// Tiles are independent (disjoint writes, const map reads): cv::parallel_for_.
+// Reserve() sizes the box to a known extent (the mission grid) up front, so map
+// growth inside it never triggers a global rebuild.
 // ---------------------------------------------------------------------------
 #include "planning/volumetric/tsdf_map.hpp"
 
 #include <cstdint>
+#include <utility>
 #include <vector>
 
 namespace ariadne::planning {
@@ -46,8 +52,12 @@ public:
     /// d_max: clearance cap (m); pad_m: extra margin kept around the map so growth rarely forces a rebuild.
     Esdf(double voxel, double d_max, double pad_m = 2.0);
 
-    /// Global recompute over the map's bounds (+ margin). Used at start, on box growth, and by the tests.
+    /// Global recompute over the map's bounds (+ margin), and over the reserved extent if any. Used at start, on box
+    /// growth, and by the tests.
     void Rebuild(const TsdfMap& map);
+    /// Keep at least voxels [lo, hi] inside the box (applied at the next Rebuild). Values are unchanged by it:
+    /// inside the box with nothing mapped, egress is 0 and agent d_max, exactly as outside the box.
+    void Reserve(const Idx3& lo, const Idx3& hi) { res_lo_ = lo, res_hi_ = hi, reserved_ = true; }
     /// Incremental update after Integrate returned dirty_blocks. Rebuilds instead when the map outgrew the box.
     /// Returns true if it was incremental.
     bool Update(const TsdfMap& map, const std::vector<Idx3>& dirty_blocks);
@@ -63,6 +73,7 @@ public:
 
 private:
     void Recompute(const TsdfMap& map, Idx3 out_lo, Idx3 out_hi);   // tiled; sites from each tile (+) k
+    void RecomputeTiles(const TsdfMap& map, const std::vector<std::pair<Idx3, Idx3>>& tiles);   // in parallel
     void RecomputeTile(const TsdfMap& map, Idx3 site_lo, Idx3 site_hi, Idx3 out_lo, Idx3 out_hi);
     double Clear(uint16_t q4) const;
     size_t At(const Idx3& v) const {
@@ -75,6 +86,8 @@ private:
     double vox_, d_max_, pad_m_;
     int k_;   // ceil(d_max / voxel) + 1: the reach of a capped change, in voxels
     Idx3 lo_, dims_;
+    Idx3 res_lo_, res_hi_;
+    bool reserved_ = false;
     std::vector<uint16_t> egress_, agent_;   // min(4 d^2, 65535), voxel units (cube-edge convention)
     size_t last_updated_ = 0;
 };
