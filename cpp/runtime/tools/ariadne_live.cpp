@@ -772,7 +772,8 @@ int main(int argc, char** argv) {
             double tau_s = 10.0, timeout_s = 10.0;
             int max_options = 8;
             core::FrameTag g_tag{0, 0};                               // G = the world frame, agreed at the briefing
-            // planner_k is touched ONLY on workers[k] (agent_worker.hpp): integration, the plan, the route.
+            // planner_k's map is touched ONLY on workers[k] (agent_worker.hpp): integration and the plan. Route reads the
+            // finished plan only, so the mission thread calls it directly.
             // eager_map (demo, no shadow map): keyframes are integrated at delivery, not at the next decision.
             bool eager_map = false;
             std::atomic<size_t> rays_async{0};
@@ -2473,10 +2474,10 @@ int main(int argc, char** argv) {
                     const auto g = po.goal_xy;
                     const bool same = current[k].set && std::hypot(g.first - current[k].gx, g.second - current[k].gy) < lc.refused_radius_m;
                     current[k] = {true, g.first, g.second, same ? current[k].since_ns : T, pick_reason[k]};
-                    std::pair<std::vector<std::pair<double, double>>, double> routed;
-                    if (ma) ma->workers[size_t(k)].Run([&] { routed = ma->planners[size_t(k)].Route(plan_out, k, pick, pd.ac); });
-                    else routed = planner->Route(plan_out, k, pick, pd.ac);
-                    auto [path, face_yaw] = std::move(routed);
+                    // Route reads only the finished plan (plan fork joined above) and the briefing, never the map
+                    // that worker_k may be integrating into: no need to queue behind its keyframe backlog.
+                    auto [path, face_yaw] = ma ? ma->planners[size_t(k)].Route(plan_out, k, pick, pd.ac)
+                                               : planner->Route(plan_out, k, pick, pd.ac);
                     if (lc.demo && path.size() > 1) {   // D169: never backtrack to where the agent was at plan time
                         core::SE3 latest;
                         bool have_latest = false;
