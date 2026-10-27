@@ -1,5 +1,7 @@
 #include "planning/volumetric/traversability.hpp"
 
+#include <opencv2/core.hpp>
+
 #include "planning/volumetric/clearance.hpp"
 
 #include <opencv2/imgproc.hpp>
@@ -39,7 +41,9 @@ TraversabilityMaps ComputeTraversability(const TsdfMap& map, const Esdf& esdf, c
     cv::Mat n_down = cv::Mat::zeros(g.rows, g.cols, CV_32F), n_hang = cv::Mat::zeros(g.rows, g.cols, CV_32F);
     const int rl = Zv(p.responder.axis_lo), rh = Zv(p.responder.axis_hi), al = Zv(p.agent.axis_lo), ah = Zv(p.agent.axis_hi);
     const int kl = Zv(p.risk_z_lo), kh = Zv(p.risk_z_hi), ol = Zv(p.open_below_z_lo);
-    for (int r = 0; r < g.rows; ++r) {
+    // Columns are independent (const map/ESDF reads, one output pixel each): rows in parallel, same bits.
+    cv::parallel_for_(cv::Range(0, g.rows), [&](const cv::Range& rows) {
+    for (int r = rows.start; r < rows.end; ++r) {
         for (int c = 0; c < g.cols; ++c) {
             const int x = cx0 + c, y = cy0 + r;
             double cr = esdf.DMax(), co = esdf.DMax(), ca = esdf.DMax();
@@ -79,6 +83,7 @@ TraversabilityMaps ComputeTraversability(const TsdfMap& map, const Esdf& esdf, c
             n_hang.at<float>(r, c) = open_below ? float(occ) : 0.f;
         }
     }
+    });
     // Observed rule: 1.8's own 2D clearance (planning::EdgeClearance, the GT convention) from each free column to
     // the nearest non-free column, capped like the 3D field.
     const cv::Mat clear2d = EdgeClearance(m.slab != kFree, vox, esdf.DMax());

@@ -31,10 +31,12 @@ cv::Mat BodySupport(const TsdfMap& map, const GridFrame& g, const BodyCapsule& b
                 if ((i * i + j * j) * vox * vox <= r2 + 1e-12) disc.at<float>(i + R, j + R) = 1.f;
         const double n = cv::sum(disc)[0];
         if (n == 0) continue;
-        for (int r = 0; r < g.rows; ++r) {
-            float* k = known.ptr<float>(r);
-            for (int c = 0; c < g.cols; ++c) k[c] = map.State({cx0 + c, cy0 + r, z}) != kUnknown ? 1.f : 0.f;
-        }
+        cv::parallel_for_(cv::Range(0, g.rows), [&](const cv::Range& rows) {   // const reads, one row each
+            for (int r = rows.start; r < rows.end; ++r) {
+                float* k = known.ptr<float>(r);
+                for (int c = 0; c < g.cols; ++c) k[c] = map.State({cx0 + c, cy0 + r, z}) != kUnknown ? 1.f : 0.f;
+            }
+        });
         // A symmetric kernel, so correlation = convolution; outside the grid is unobserved (constant 0).
         cv::filter2D(known, conv, CV_32F, disc, cv::Point(-1, -1), 0, cv::BORDER_CONSTANT);
         known_sum += conv;
