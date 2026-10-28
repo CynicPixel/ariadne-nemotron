@@ -8,8 +8,12 @@ Read-only: it never writes to the run and never computes a status (statuses come
 D316; the panel shows what the records say). Sources:
   ARIADNE_LIVE=<run>:<scene>   <run>/hypotheses.jsonl (written beside decisions/ by orchestration/hypotheses.py) and
                                trace.jsonl from the ariadne_live directory inside <run>
-  ARIADNE_HYPOTHESES=<file>    a recorded hypotheses.jsonl instead (its directory is then the run root)
-The reader is tolerant: a half-written last line, an unknown event or a missing field never fails a request.
+  ARIADNE_HYPOTHESES=<file>    a recorded hypotheses.jsonl instead (its directory is then the run root). API only: `/`
+                               serves index.html only with ARIADNE_LIVE; to show a finished run's panel, point
+                               ARIADNE_LIVE at that run directory.
+The reader is tolerant: a half-written last line, an unknown event or a missing field never fails a request. Both files
+are re-read only when their size or mtime changes, and the trace is read from its tail (the console shares a CPU-bound
+box with the simulator during a recording).
 """
 from __future__ import annotations
 
@@ -23,7 +27,21 @@ from fastapi.responses import FileResponse, JSONResponse
 router = APIRouter(prefix="/api/hypotheses")
 STATUSES = ("unresolved", "supported", "confirmed", "refuted", "expired")
 IMAGE_TYPES = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg"}
-TRACE_TAIL_MAX = 8 << 20   # a trace line carries every tool call's result; read at most the last 8 MiB for the newest one
+TRACE_TAIL_MIN, TRACE_TAIL_MAX = 256 << 10, 8 << 20   # a trace line carries every tool call's result: start with the
+                                                     # last 256 KiB, double until a decision is found, stop at 8 MiB
+_cache: dict = {}
+
+
+def _cached(kind: str, f: Path, load):
+    """load(f), recomputed only when f's (size, mtime) changes."""
+    st = f.stat()
+    key = (st.st_size, st.st_mtime_ns)
+    hit = _cache.get((kind, f))
+    if hit and hit[0] == key:
+        return hit[1]
+    val = load(f)
+    _cache[(kind, f)] = (key, val)
+    return val
 
 
 def _sources() -> tuple[Path | None, Path | None]:
@@ -43,6 +61,10 @@ def _sources() -> tuple[Path | None, Path | None]:
 def _events(f: Path | None) -> list[dict]:
     if not f or not f.is_file():
         return []
+    return _cached("events", f, _read_events)
+
+
+def _read_events(f: Path) -> list[dict]:
     out = []
     for line in f.read_text(errors="replace").splitlines():
         try:
@@ -118,12 +140,24 @@ def _trace(root: Path | None) -> Path | None:
 
 def latest_decision(f: Path | None) -> dict | None:
     """The newest trace record whose choice came back from the orchestrator: its model, latency and tokens, as logged."""
-    if not f:
-        return None
-    size = f.stat().st_size
+    return _cached("decision", f, _read_decision) if f else None
+
+
+def _read_decision(f: Path) -> dict | None:
+    size, n = f.stat().st_size, TRACE_TAIL_MIN
+    while True:
+        found = _newest_decision(f, size, n)
+        if found or n >= min(size, TRACE_TAIL_MAX):
+            return found
+        n *= 2
+
+
+def _newest_decision(f: Path, size: int, n: int) -> dict | None:
     with open(f, "rb") as fh:
-        fh.seek(max(0, size - TRACE_TAIL_MAX))
-        lines = fh.read().decode(errors="replace").splitlines()
+        fh.seek(max(0, size - n))
+        lines = fh.read(n).decode(errors="replace").splitlines()
+    if size > n:
+        lines = lines[1:]   # the first line of a tail is cut
     for line in reversed(lines):
         try:
             r = json.loads(line)

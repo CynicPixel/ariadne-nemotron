@@ -141,8 +141,8 @@ the stereo rig — but no section specified preintegration, bias states, gravity
 residual entered BA or the pose graph. The IMU was produced by the simulator and consumed by nothing, and the
 `GRAVITY_PRIOR` edge had no producer. **Resolved:** §10 (Inertial layer), staged as Iteration 3.5, with a reduced
 fallback mode (§10.7) that still produces the gravity prior and motion prediction if that iteration slips. Under
-no circumstances may "stereo-inertial" appear in the report while the estimator is vision-only; the competition
-rules explicitly allow rejection for misrepresenting capabilities.
+no circumstances may "stereo-inertial" appear in any write-up while the estimator is vision-only; a reviewer
+may reject work that misrepresents its capabilities.
 
 **C2 — `Sim3 or SE3` in the loop-edge struct was not a decision (was blocking for the protocol).** A message
 schema cannot contain "or". With stereo as the primary rig (Correction B), scale is observable per agent and
@@ -4068,9 +4068,9 @@ agent decision
 tool call/action
 ```
 
-This directly satisfies the competition's agentic behavior requirement.
+This is the agentic-behaviour requirement the design is held to.
 
-Competition rules:
+Requirements of the original brief:
 - OpenCV 5 and AWS are hard requirements.
 - The agentic layer requires vision output to influence a subsequent plan/tool/action/approval.
 - The project must provide a trace and evaluation of failure handling/human control.
@@ -4101,7 +4101,7 @@ If B does not:
 say so
 ```
 
-The competition rewards credible engineering, not decorative agent terminology.
+Credible engineering matters more than decorative agent terminology.
 
 ---
 
@@ -4132,7 +4132,7 @@ Run:
 - expensive feed-forward model experiments,
 - batch evaluation.
 
-This is the correct use of the competition's heterogeneous cloud environment.
+This is the correct use of a heterogeneous cloud environment.
 
 ---
 

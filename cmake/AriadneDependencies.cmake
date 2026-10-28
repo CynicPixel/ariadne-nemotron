@@ -20,7 +20,7 @@ target_include_directories(ariadne_eigen SYSTEM INTERFACE ${eigen_SOURCE_DIR})
 # Eigen is primarily MPL2 but ships some LGPL 2.1 code (see its COPYING.README).
 # EIGEN_MPL2_ONLY turns including any LGPL-licensed Eigen header into a COMPILE
 # ERROR, so permissive licensing becomes something the build proves rather than
-# something we assert. The competition checks component licences individually.
+# something we assert. Component licences are checked one by one (LICENSES/THIRD_PARTY.md).
 target_compile_definitions(ariadne_eigen INTERFACE EIGEN_MPL2_ONLY)
 
 # FlatBuffers is the locked serializer (arch §0.2): schema-versioned,

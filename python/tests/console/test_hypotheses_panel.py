@@ -106,3 +106,19 @@ def test_recorded_file_mode(run, monkeypatch):
     monkeypatch.setenv("ARIADNE_HYPOTHESES", str(root / "hypotheses.jsonl"))
     d = c.get("/api/hypotheses").json()
     assert d["available"] and len(d["hypotheses"]) == len(last_status(FIXTURE)) and d["decision"]["model"]
+
+
+def test_decision_found_behind_a_long_trace_line(run):
+    root, c = run
+    with open(next(root.glob("*/trace.jsonl")), "a") as f:   # newer records without an orchestrator answer, > 256 KiB
+        f.write(json.dumps({"t_s": 15, "choice": {"source": "classical"}, "pad": "x" * (600 << 10)}) + "\n")
+    assert c.get("/api/hypotheses").json()["decision"]["decision_id"] == "t10000ms"
+
+
+def test_cache_follows_the_file(run):
+    root, c = run
+    assert c.get("/api/hypotheses").json()["counts"]["expired"] == 0
+    with open(root / "hypotheses.jsonl", "a") as f:
+        f.write(json.dumps({"sim_t_s": 70, "event": "status", "hypothesis_id": "h001", "agent_id": 0,
+                            "status": "expired", "status_source": "verifier", "provenance": {}}) + "\n")
+    assert c.get("/api/hypotheses").json()["counts"]["expired"] == 1

@@ -58,9 +58,5 @@ Only permissively licensed weights and reference implementations are used, per t
 
 ## Ariadne's own licence
 
-`[UNDECIDED — maintainer]` Not yet chosen. The competition rules do not mandate one:
-participants retain all right, title and interest in their entries, and the licence granted
-to OpenCV and AWS covers submitted materials only.
-
-This matters before the repository is made public for judging. Apache-2.0 is the natural
-match for the dependency set and for the OpenCV ecosystem, but the choice is not mine to make.
+MIT: see [`LICENSE`](../LICENSE) (chosen by the maintainer on 2026-10-27). The third-party components above keep their own
+licences.
