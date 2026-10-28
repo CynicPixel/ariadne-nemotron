@@ -5935,3 +5935,22 @@ diagnostic rerun (c442c1, same pinned payload live-payload-20261024T120124Z, sam
   leg's telemetry (its own digest-checked recording), not from a replay.
 - The reaper now names worker deaths ("collab worker pid N KILLED by signal S", 90c41fe); replay-s3 ships
   docker-stats/ps-RSS/cgroup-peak samplers + dmesg on every future replay (c365126).
+
+## 2026-10-28 — D300: ariadne-nemotron fork — shared history, tree-only scrub, local upstream
+
+**What.** ariadne-nemotron is a fork of Ariadne at `0ca523c`. It adds an evidence-seeking agentic layer on NVIDIA Nemotron
+served by Nebius Token Factory (Physical AI track).
+- **History:** the fork keeps Ariadne's full git history.
+- **Scrub:** mentions of the earlier competition are removed from the *current tree* only, by forward commits (`tools/scrub/`), and
+  re-applied after every upstream merge.
+- **Remotes:** `upstream` is the local `/data/code/Ariadne` with push disabled; `origin` is `CynicPixel/ariadne-nemotron`.
+- **Identifiers:** Ariadne identifiers (`ariadne_live`, `ARIADNE_*` env, image names) are not renamed.
+
+**Why.**
+- The real-time live-path work keeps landing upstream (`perf/live-decision-path`, 94 files). A shared ancestor keeps those merges ordinary.
+- An orphan or rewritten history would turn every sync into a manual ~94-file patch, and would drop the in-window
+  provenance (first commit 2026-09-06).
+- Renaming identifiers would turn every merge into a conflict storm for no functional gain.
+
+**Verified.** Clone at `0ca523c`. `git remote -v` shows the new origin, with upstream push `DISABLED`. `git ls-remote origin` reaches the empty repo.
+Decision IDs D300–D349 are claimed by the fork: FM D300–D309, FP D310–D329, FV D330–D339, D340–D349 reserved.
