@@ -6,7 +6,9 @@ One decision request per replan covers every agent (§0 change 1, Co-NavGPT's jo
 to DECISION_DIR/<decision_id>.json: per agent the map facts built from keyframe depth, the estimator's state and the
 candidate set the planner proved reachable (with the deterministic §23 risk); the egress route at rho_responder; the
 paths of the images it rendered with OpenCV. Every tool is a view of that request, plus two actions:
-request_human_approval (§23) and assign (the decision). The LLM computes nothing numeric and cannot add a candidate
+request_human_approval (§23) and assign (the decision). Fork (D317): list_hypotheses reads DECISION_DIR/<did>.hypotheses.json,
+which the orchestrator writes before each turn (statuses set by verifier.py only); assign may carry hypothesis_id and
+evidence_goal per agent (the C++ gate ignores both; they reach trace.jsonl in the answer). The LLM computes nothing numeric and cannot add a candidate
 (§25.1); assign only records indices, which the C++ runtime validates again.
 
 --text-only drops observe_image: the fallback model (DeepSeek V3.2 on Bedrock) accepts TEXT input only (checked with
@@ -153,11 +155,35 @@ def propose_directive(decision_id: str, kind: str, text: str, agent: int = -1, p
     return {"proposed": True, "id": pid, "status": "awaiting operator confirmation"}
 
 
+@server.tool(description="Open hypotheses about where a responder-passable passage lies, anchored to this replan's "
+                         "candidates (`anchors`: agent -> candidate index), with status set ONLY by a deterministic "
+                         "verifier from the observed map (unresolved | supported | confirmed | refuted | expired) and "
+                         "its reason. An unresolved or supported hypothesis is evidence worth seeking: sending an agent "
+                         "to its candidate lets the next map confirm or refute it. Refuted ones are dead ends.")
+def list_hypotheses(decision_id: str) -> dict:
+    _req(decision_id)
+    p = DIR / f"{decision_id}.hypotheses.json"
+    if not p.exists():
+        return {"enabled": False, "hypotheses": []}
+    return {"enabled": True, **json.loads(p.read_text())}
+
+
+def _open_hypotheses(decision_id: str) -> dict:
+    p = DIR / f"{decision_id}.hypotheses.json"
+    if not p.exists():
+        return {}
+    h = json.loads(p.read_text())
+    return {x["hypothesis_id"]: x for x in h["hypotheses"] if x["status"] in ("unresolved", "supported")}
+
+
 @server.tool(description="The decision: one entry per agent, {agent, candidate (-1 = hold), reason, approval_id "
-                         "(only for a candidate that needed approval)}. Call exactly once, last.")
+                         "(only for a candidate that needed approval), hypothesis_id (optional: the open hypothesis this "
+                         "move tests), evidence_goal (optional, one sentence: what the agent should observe)}. Call "
+                         "exactly once, last.")
 def assign(decision_id: str, assignments: list[dict]) -> dict:
     r = _req(decision_id)
     agents = {a["agent"]: a for a in r["agents"]}
+    hyps = _open_hypotheses(decision_id)
     seen, clean = set(), []
     for e in assignments:
         k, c = int(e.get("agent", -9)), int(e.get("candidate", -9))
@@ -165,9 +191,19 @@ def assign(decision_id: str, assignments: list[dict]) -> dict:
             return {"recorded": False, "detail": f"agent {k} is not decided at this replan, or is listed twice"}
         if not -1 <= c < len(agents[k]["candidates"]):
             return {"recorded": False, "detail": f"agent {k}: candidate {c} is out of range; assign again"}
+        hid = str(e.get("hypothesis_id") or "")
+        if hid and hid not in hyps:
+            return {"recorded": False, "detail": f"agent {k}: hypothesis {hid!r} is not an open hypothesis; "
+                                                 "omit it or pick one from list_hypotheses"}
         seen.add(k)
-        clean.append({"agent": k, "candidate": c, "reason": str(e.get("reason", ""))[:300],
-                      "approval_id": str(e.get("approval_id", ""))})
+        rec = {"agent": k, "candidate": c, "reason": str(e.get("reason", ""))[:300],
+               "approval_id": str(e.get("approval_id", ""))}
+        if hid:
+            rec["hypothesis_id"] = hid
+            rec["hypothesis_anchored"] = hyps[hid].get("anchors", {}).get(str(k)) == c
+        if e.get("evidence_goal"):
+            rec["evidence_goal"] = str(e["evidence_goal"])[:200]
+        clean.append(rec)
     if seen != set(agents):
         return {"recorded": False, "detail": f"assign every agent: {sorted(agents)}"}
     (DIR / f"{decision_id}.choice.json").write_text(json.dumps({"assignments": clean}))

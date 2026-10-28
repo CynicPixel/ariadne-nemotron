@@ -1,7 +1,7 @@
-"""The orchestrator's Bedrock tool loop with Bedrock stubbed (botocore Stubber; no network, no spend), against the real
+"""The orchestrator's Bedrock tool loop (providers/bedrock.py, configs/llm/bedrock.yaml; D310) with Bedrock stubbed (botocore Stubber; no network, no spend), against the real
 MCP servers over stdio (design agentic.md D156-D160). Runs in ariadne-orchestrator:1:
 
-  docker run --rm -v "$PWD":/work:ro -w /work/python ariadne-orchestrator:1 python -m pytest -q -p no:cacheprovider \
+  docker run --rm -v "$PWD":/work:ro -w /work/python ariadne-orchestrator:nemotron-1 python -m pytest -q -p no:cacheprovider \
       tests/orchestration/test_orchestrator_stub.py
 
 1. Nova inspects, asks for approval of an above-threshold candidate (the console's verdict file is already there),
@@ -19,7 +19,19 @@ import boto3
 from botocore.stub import ANY, Stubber
 from mcp.client.client import Client
 
-from orchestration.orchestrator import FALLBACK, PRIMARY, decide, mcp_params, tool_config
+from orchestration.orchestrator import Chooser, decide, mcp_params
+from orchestration.providers import load_config, make_provider
+
+CFG = load_config(Path(__file__).resolve().parents[3] / "configs" / "llm" / "bedrock.yaml")
+PRIMARY, FALLBACK = (s["model"] for s in CFG["decision"]["chain"])
+
+
+async def _chooser(ddir: Path, mm, tx, br, max_calls=10) -> Chooser:
+    """What serve() builds, with the Bedrock client injected."""
+    prov = make_provider("bedrock", CFG, client=br)
+    mcps = {"multimodal": mm, "text": tx}
+    cfgs = {("bedrock", k): prov.tool_config((await c.list_tools()).tools) for k, c in mcps.items()}
+    return Chooser(ddir, mcps, {"bedrock": prov}, CFG["decision"]["chain"], cfgs, max_calls)
 
 
 def _request(tmp: Path) -> dict:
@@ -54,13 +66,12 @@ def _run(tmp: Path, script, max_calls=10):
 
     async def go():
         async with Client(mcp_params(ddir, False)) as mm, Client(mcp_params(ddir, True)) as tx:
-            mcps = {"multimodal": mm, "text": tx}
-            cfgs = {k: tool_config((await c.list_tools()).tools) for k, c in mcps.items()}
+            ch = await _chooser(ddir, mm, tx, br, max_calls)
             with Stubber(br) as st:
                 script(st)
-                ans = await decide(_request(tmp), ddir, mcps, cfgs, br, max_calls)
+                ans = await decide(_request(tmp), ch)
                 st.assert_no_pending_responses()
-            return ans, cfgs
+            return ans, {k: v for (_, k), v in ch.cfgs.items()}
     return asyncio.run(go())
 
 
@@ -127,7 +138,7 @@ def test_oversized_request_line_is_answered(tmp_path, monkeypatch):
 
     async def go():
         # no `async with srv`: 3.12's __aexit__ awaits wait_closed(), which waits for every client transport
-        srv = await asyncio.start_unix_server(orch.make_handler(None, None, None, None, 1), path=sock,
+        srv = await asyncio.start_unix_server(orch.make_handler(None), path=sock,
                                               limit=orch.LINE_LIMIT)
         reader, writer = await asyncio.open_unix_connection(sock, limit=orch.LINE_LIMIT)
         writer.write((json.dumps({"decision_id": "big", "pad": "x" * 300_000}) + "\n").encode())
@@ -152,9 +163,7 @@ def test_any_failure_answers_at_once(tmp_path):
 
     async def go():
         async with Client(mcp_params(ddir, False)) as mm, Client(mcp_params(ddir, True)) as tx:
-            mcps = {"multimodal": mm, "text": tx}
-            cfgs = {k: tool_config((await c.list_tools()).tools) for k, c in mcps.items()}
-            return await decide(_request(tmp_path), ddir, mcps, cfgs, Broken(), 10)
+            return await decide(_request(tmp_path), await _chooser(ddir, mm, tx, Broken()))
     ans = asyncio.run(go())
     assert ans["assignments"] is None
     assert "RuntimeError" in ans["orchestrator"]["errors"][0] and not ans["orchestrator"]["fallback_used"]

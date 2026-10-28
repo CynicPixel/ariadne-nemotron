@@ -1,0 +1,107 @@
+{
+ "request": {
+  "model": "nvidia/nemotron-3-super-120b-a12b",
+  "max_tokens": 300,
+  "temperature": 0.0,
+  "tools": [
+   {
+    "type": "function",
+    "function": {
+     "name": "assign",
+     "description": "Assign one exploration candidate to agent 0.",
+     "parameters": {
+      "type": "object",
+      "properties": {
+       "candidate": {
+        "type": "integer"
+       },
+       "reason": {
+        "type": "string"
+       }
+      },
+      "required": [
+       "candidate",
+       "reason"
+      ]
+     }
+    }
+   }
+  ],
+  "tool_choice": "required",
+  "extra_body": {
+   "chat_template_kwargs": {
+    "enable_thinking": false
+   }
+  }
+ },
+ "n_messages": 2,
+ "latency_s": 1.103,
+ "response": {
+  "id": "chatcmpl-a75fc86e20dad4d1",
+  "choices": [
+   {
+    "finish_reason": "tool_calls",
+    "index": 0,
+    "logprobs": null,
+    "message": {
+     "content": "",
+     "refusal": null,
+     "role": "assistant",
+     "annotations": null,
+     "audio": null,
+     "function_call": null,
+     "tool_calls": [
+      {
+       "id": "chatcmpl-tool-ad4f2bbcf7f12127",
+       "function": {
+        "arguments": "{\"candidate\": 0, \"reason\": \"Closer (2.1m vs 6.3m), more unknown cells (40 vs 12), lower risk (0.1 vs 0.4)\"}",
+        "name": "assign"
+       },
+       "type": "function"
+      }
+     ],
+     "reasoning": null
+    },
+    "stop_reason": null,
+    "token_ids": null,
+    "routed_experts": null
+   }
+  ],
+  "created": 1793221753,
+  "model": "nvidia/nemotron-3-super-120b-a12b",
+  "object": "chat.completion",
+  "metadata": null,
+  "moderation": null,
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.1.dev1+g5001743e3-tp2-05adddbc",
+  "usage": {
+   "completion_tokens": 68,
+   "prompt_tokens": 438,
+   "total_tokens": 506,
+   "completion_tokens_details": {
+    "accepted_prediction_tokens": null,
+    "audio_tokens": null,
+    "reasoning_tokens": 0,
+    "rejected_prediction_tokens": null,
+    "text_tokens": null
+   },
+   "prompt_tokens_details": {
+    "audio_tokens": null,
+    "cache_write_tokens": null,
+    "cached_tokens": 0,
+    "image_tokens": null,
+    "text_tokens": null,
+    "created_cache_tokens": 0,
+    "multimodal_tokens": null
+   },
+   "prompt_cache_hit_tokens": 0,
+   "prompt_cache_miss_tokens": 438
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+ }
+}

@@ -5980,3 +5980,26 @@ listing, never from docs. The user's credit is USD 59 and any overrun is billed 
 - **Super 120B**, with `chat_template_kwargs.enable_thinking:false`: HTTP 200 in 1.24 s, 456 / 80, reasoning_tokens 0, one well-formed `assign` call.
 - **Caveat:** VL's free-text reason cited "a0's current position", which the prompt never gave. Model rationales are
   untrusted text and are never evidence; this is consistent with the invariant that the model never certifies geometry.
+
+## 2026-10-29 — D310–D318: Nemotron provider, ledger, slab export, hypotheses, verifier, bench (FP)
+
+**What.** The design, with full rules, is in `docs/design/nemotron-evidence-loop.md` §2:
+- D310: provider interface; fall back only on transport errors.
+- D311: model chain, prices and caps live in `configs/llm/*.yaml`; no constants in code.
+- D312: append-only spend ledger with a hard cap of USD 40 and a warning at USD 25 (FM requirement).
+- D313: Token Factory adapter rules, with reasoning off on the decision tier.
+- D314: the request carries `slab{...}`, which points at the same replan's existing raw `snapshots/slab_<ms>.png`. A
+  guard rejects any later slab.
+- D315: hypotheses are anchored to planner candidates and re-associated by centroid. They are seeded deterministically.
+- D316: the verifier is deterministic, reads only the slab and uses ρ_responder 0.40 m. Status is decided by a
+  pessimistic/optimistic crossing test.
+- D317: `hypotheses.jsonl` and `verifier.jsonl` traces, the `list_hypotheses` tool, and the `hypothesis_id` and
+  `evidence_goal` fields on `assign`.
+- D318: the bench replays a recorded corpus with a cost gate.
+
+**Why.**
+- The model may only choose among candidates the planner proved reachable. Hypothesis status must come from observed
+  occupancy alone (CLAUDE.md §1).
+- The user's Token Factory credit is USD 59, and any overrun is billed to their bank account.
+
+**Verified.** Design only at the time of writing. Evidence (tests, fixtures, runs) is appended per item as it lands.

@@ -1,0 +1,318 @@
+{
+ "request": {
+  "model": "nvidia/Nemotron-3_5-Lightning",
+  "max_tokens": 512,
+  "temperature": 0.0,
+  "tools": [
+   {
+    "type": "function",
+    "function": {
+     "name": "observe_map",
+     "description": "Map facts for one agent at this replan, built from keyframe stereo depth: observed free, occupied and unknown cell counts, frontier clusters, keyframes integrated, the agent's estimated position.",
+     "parameters": {
+      "type": "object",
+      "properties": {
+       "decision_id": {
+        "title": "Decision Id",
+        "type": "string"
+       },
+       "agent": {
+        "title": "Agent",
+        "type": "integer"
+       }
+      },
+      "required": [
+       "decision_id",
+       "agent"
+      ],
+      "title": "observe_mapArguments"
+     }
+    }
+   },
+   {
+    "type": "function",
+    "function": {
+     "name": "query_uncertainty",
+     "description": "One agent's visual odometry state: frames, keyframes, and seconds since the last keyframe. Few keyframes or a long gap mean a less certain pose.",
+     "parameters": {
+      "type": "object",
+      "properties": {
+       "decision_id": {
+        "title": "Decision Id",
+        "type": "string"
+       },
+       "agent": {
+        "title": "Agent",
+        "type": "integer"
+       }
+      },
+      "required": [
+       "decision_id",
+       "agent"
+      ],
+      "title": "query_uncertaintyArguments"
+     }
+    }
+   },
+   {
+    "type": "function",
+    "function": {
+     "name": "query_route",
+     "description": "The egress route for a human responder (0.40 m clearance) on the current map: found or not, length, which exit. Exploration that finds this route serves the mission.",
+     "parameters": {
+      "type": "object",
+      "properties": {
+       "decision_id": {
+        "title": "Decision Id",
+        "type": "string"
+       }
+      },
+      "required": [
+       "decision_id"
+      ],
+      "title": "query_routeArguments"
+     }
+    }
+   },
+   {
+    "type": "function",
+    "function": {
+     "name": "list_candidates",
+     "description": "Both agents' candidate actions, computed by the deterministic planner: frontier clusters reachable at the agent's clearance, each with cluster id, path length, cluster size (unknown boundary seen: an information proxy), risk in [0,1] with its reason, whether it needs human approval, and the operator's intent at its goal (`directives` covering it, `priority_weight`, `to_directive_m` = distance to the nearest operator region for this agent, 0 inside). Candidate -1 means hold. `classical_choice` is what the classical planner would pick. `current_task` is the goal the agent is driving to now (null if none): when it was chosen, why, the straight-line distance left, and `candidate` = the index that continues it (-1 if it is no longer a candidate). Cluster ids and indices are renumbered every replan; match by goal, not id. `operator_directives` are the operator's standing orders. Do not send both agents to the same cluster when another one is available.",
+     "parameters": {
+      "type": "object",
+      "properties": {
+       "decision_id": {
+        "title": "Decision Id",
+        "type": "string"
+       }
+      },
+      "required": [
+       "decision_id"
+      ],
+      "title": "list_candidatesArguments"
+     }
+    }
+   },
+   {
+    "type": "function",
+    "function": {
+     "name": "request_human_approval",
+     "description": "Ask the human operator to approve one agent's candidate whose risk exceeds the autonomous threshold (\u00a723). Blocks until the operator answers or the request times out. Returns the verdict (approved, rejected or timeout) and the approval_id to pass to assign.",
+     "parameters": {
+      "type": "object",
+      "properties": {
+       "decision_id": {
+        "title": "Decision Id",
+        "type": "string"
+       },
+       "agent": {
+        "title": "Agent",
+        "type": "integer"
+       },
+       "candidate": {
+        "title": "Candidate",
+        "type": "integer"
+       },
+       "reason": {
+        "title": "Reason",
+        "type": "string"
+       }
+      },
+      "required": [
+       "decision_id",
+       "agent",
+       "candidate",
+       "reason"
+      ],
+      "title": "request_human_approvalArguments"
+     }
+    }
+   },
+   {
+    "type": "function",
+    "function": {
+     "name": "propose_directive",
+     "description": "Propose an operator directive from the operator's words or from what you see: kind is priority_region | keep_out | assign | explore (polygon = [[x,y],...] in metres, the map frame) or hold | release (agent). It takes effect ONLY after a person confirms it in the console; say why in `text`.",
+     "parameters": {
+      "type": "object",
+      "properties": {
+       "decision_id": {
+        "title": "Decision Id",
+        "type": "string"
+       },
+       "kind": {
+        "title": "Kind",
+        "type": "string"
+       },
+       "text": {
+        "title": "Text",
+        "type": "string"
+       },
+       "agent": {
+        "default": -1,
+        "title": "Agent",
+        "type": "integer"
+       },
+       "polygon": {
+        "anyOf": [
+         {
+          "items": {
+           "items": {
+            "type": "number"
+           },
+           "type": "array"
+          },
+          "type": "array"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "default": null,
+        "title": "Polygon"
+       },
+       "weight": {
+        "default": 1.0,
+        "title": "Weight",
+        "type": "number"
+       },
+       "time_budget_s": {
+        "default": 0.0,
+        "title": "Time Budget S",
+        "type": "number"
+       }
+      },
+      "required": [
+       "decision_id",
+       "kind",
+       "text"
+      ],
+      "title": "propose_directiveArguments"
+     }
+    }
+   },
+   {
+    "type": "function",
+    "function": {
+     "name": "list_hypotheses",
+     "description": "Open hypotheses about where a responder-passable passage lies, anchored to this replan's candidates (`anchors`: agent -> candidate index), with status set ONLY by a deterministic verifier from the observed map (unresolved | supported | confirmed | refuted | expired) and its reason. An unresolved or supported hypothesis is evidence worth seeking: sending an agent to its candidate lets the next map confirm or refute it. Refuted ones are dead ends.",
+     "parameters": {
+      "type": "object",
+      "properties": {
+       "decision_id": {
+        "title": "Decision Id",
+        "type": "string"
+       }
+      },
+      "required": [
+       "decision_id"
+      ],
+      "title": "list_hypothesesArguments"
+     }
+    }
+   },
+   {
+    "type": "function",
+    "function": {
+     "name": "assign",
+     "description": "The decision: one entry per agent, {agent, candidate (-1 = hold), reason, approval_id (only for a candidate that needed approval), hypothesis_id (optional: the open hypothesis this move tests), evidence_goal (optional, one sentence: what the agent should observe)}. Call exactly once, last.",
+     "parameters": {
+      "type": "object",
+      "properties": {
+       "decision_id": {
+        "title": "Decision Id",
+        "type": "string"
+       },
+       "assignments": {
+        "items": {
+         "additionalProperties": true,
+         "type": "object"
+        },
+        "title": "Assignments",
+        "type": "array"
+       }
+      },
+      "required": [
+       "decision_id",
+       "assignments"
+      ],
+      "title": "assignArguments"
+     }
+    }
+   }
+  ],
+  "tool_choice": "auto",
+  "extra_body": {
+   "chat_template_kwargs": {
+    "enable_thinking": false
+   }
+  }
+ },
+ "n_messages": 12,
+ "latency_s": 0.476,
+ "response": {
+  "id": "chatcmpl-61c38432",
+  "choices": [
+   {
+    "finish_reason": "tool_calls",
+    "index": 0,
+    "logprobs": null,
+    "message": {
+     "content": null,
+     "refusal": null,
+     "role": "assistant",
+     "annotations": null,
+     "audio": null,
+     "function_call": null,
+     "tool_calls": [
+      {
+       "id": "call_e4fa4cc3a9784ebbb0e8493e",
+       "function": {
+        "arguments": "{\"decision_id\":\"t5000ms\"}",
+        "name": "list_hypotheses"
+       },
+       "type": "function"
+      }
+     ],
+     "reasoning": null,
+     "reasoning_content": null
+    },
+    "stop_reason": null,
+    "token_ids": null
+   }
+  ],
+  "created": 1793221785,
+  "model": "nvidia/Nemotron-3_5-Lightning",
+  "object": "chat.completion",
+  "metadata": null,
+  "moderation": null,
+  "service_tier": null,
+  "system_fingerprint": null,
+  "usage": {
+   "completion_tokens": 33,
+   "prompt_tokens": 7853,
+   "total_tokens": 7886,
+   "completion_tokens_details": {
+    "accepted_prediction_tokens": null,
+    "audio_tokens": null,
+    "reasoning_tokens": 0,
+    "rejected_prediction_tokens": null,
+    "text_tokens": null
+   },
+   "prompt_tokens_details": {
+    "audio_tokens": null,
+    "cache_write_tokens": null,
+    "cached_tokens": 4192,
+    "image_tokens": null,
+    "text_tokens": null
+   },
+   "prompt_cache_hit_tokens": 4192,
+   "prompt_cache_miss_tokens": 3661
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null
+ }
+}
