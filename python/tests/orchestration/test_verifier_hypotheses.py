@@ -361,3 +361,67 @@ def test_recorded_vl_responses_fold_in(tmp_path):
     assert all(c["orchestrator"]["model"] == "nvidia/Nemotron-3.5-Super-VL" for c in calls)
     vl = [h for h in hl.h.values() if h.get("predicts")]
     assert vl and all(h["predicts"] in ("passage", "dead_end") for h in vl)
+
+
+def test_contradictions_logged_once_per_change_and_surfaced(tmp_path):
+    hl = _layer(tmp_path)
+    req = {"decision_id": "t1000ms", "t_s": 1.0}
+    h = {"hypothesis_id": "h001", "agent_id": 0, "anchor": {}, "anchors": {}, "claim": "c", "status": "confirmed",
+         "unmatched": 0, "provenance": {"source": "seed"}}
+    ref = {"verdict": "refuted", "reason": "observed obstacles", "metrics": {}}
+    for t in (1.0, 2.0, 3.0):
+        hl._apply({**req, "t_s": t}, h, dict(ref))
+    assert h["status"] == "confirmed" and h["contradicted"]["since_t_s"] == 1.0 and h["contradiction_replans"] == 3
+    hl._apply({**req, "t_s": 4.0}, h, {"verdict": "confirmed", "reason": "crossing", "metrics": {}})
+    assert h["contradicted"] is None
+    ev = [json.loads(x)["event"] for x in (tmp_path / "run" / "hypotheses.jsonl").read_text().splitlines()]
+    assert ev == ["contradiction", "contradiction_cleared"]
+
+
+def test_assign_asks_for_approval_before_an_above_threshold_pick(tmp_path):
+    hl = _layer(tmp_path)
+    ddir = tmp_path / "run" / "decisions"
+    r = corpus_requests(tmp_path, 1)[0]
+    r["agents"][0]["candidates"][1]["needs_approval"] = True
+    r["agents"][0]["candidates"][1]["risk"] = 0.8
+    (ddir / f"{r['decision_id']}.json").write_text(json.dumps(r))
+    hl.before_turn(r)
+    did = r["decision_id"]
+
+    async def go():
+        async with Client(mcp_params(ddir, True)) as m:
+            asg = [{"agent": 0, "candidate": 1}, {"agent": 1, "candidate": 0}]
+            no = await m.call_tool("assign", {"decision_id": did, "assignments": asg})
+            (tmp_path / "approvals").mkdir(exist_ok=True)
+            (tmp_path / "approvals" / f"{did}-a0-c1.json").write_text(json.dumps({"verdict": "approved"}))
+            asg[0]["approval_id"] = f"{did}-a0-c1"
+            yes = await m.call_tool("assign", {"decision_id": did, "assignments": asg})
+            return no.content[0].text, yes.content[0].text
+    no, yes = asyncio.run(go())
+    assert '"recorded": false' in no and "request_human_approval(agent=0, candidate=1)" in no
+    assert '"recorded": true' in yes
+
+
+def test_assign_catches_a_hypothesis_index_slip(tmp_path):
+    # G2 t95000ms: hypothesis anchored to candidate 0, index 53 sent.
+    hl = _layer(tmp_path)
+    ddir = tmp_path / "run" / "decisions"
+    r = corpus_requests(tmp_path, 1)[0]
+    (ddir / f"{r['decision_id']}.json").write_text(json.dumps(r))
+    hl.before_turn(r)
+    view = json.loads((ddir / f"{r['decision_id']}.hypotheses.json").read_text())
+    h = next(x for x in view["hypotheses"] if x["status"] in ("unresolved", "supported") and "0" in x["anchors"])
+    good = h["anchors"]["0"]
+    wrong = next(i for i in range(len(r["agents"][0]["candidates"])) if i != good)
+
+    async def go():
+        async with Client(mcp_params(ddir, True)) as m:
+            res = []
+            for c in (wrong, good):
+                res.append((await m.call_tool("assign", {"decision_id": r["decision_id"], "assignments": [
+                    {"agent": 0, "candidate": c, "hypothesis_id": h["hypothesis_id"]},
+                    {"agent": 1, "candidate": -1}]})).content[0].text)
+            return res
+    bad, ok = asyncio.run(go())
+    assert '"recorded": false' in bad and f"tested by candidate {good}" in bad
+    assert '"recorded": true' in ok
