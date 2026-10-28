@@ -20,8 +20,9 @@ never be trusted to say where a person can walk.
 A team of simulated stereo-camera robots maps a collapsed structure together, and hands incident command an egress route checked at
 responder width (0.40 m).
 
-On top of that stack, the planner's most promising frontiers become open hypotheses, for example "this frontier leads to open space
-a responder can pass". On every replan, NVIDIA Nemotron, served by Nebius Token Factory, reads the planner's candidate tasks and the
+On top of that stack, Nemotron's vision model (Nemotron 3.5 Super VL) looks at the map the robots built and their camera keyframes,
+and proposes hypotheses about the planner's candidate goals, for example "this frontier opens onto a passage a responder can use".
+On every replan, NVIDIA Nemotron, served by Nebius Token Factory, reads the planner's candidate tasks and the
 open hypotheses through MCP tools. It assigns each robot a candidate and can name the hypothesis that move should test.
 
 What the model never does:
@@ -42,9 +43,10 @@ classical chooser.
   gsplat, and the world runs in Gazebo Harmonic under ROS 2 Jazzy.
 - **Nemotron provider.** It talks to Token Factory through its OpenAI-compatible API.
   - Model IDs, prices and caps live in `configs/llm/nemotron.yaml`, copied from the endpoint's own `/v1/models` listing.
-  - Decision tier: `nvidia/nemotron-3-super-120b-a12b`, with `nvidia/Nemotron-3_5-Lightning` as transport fallback, reasoning
-    off. <!-- TODO(FM): the bench's final pick and order -->
-  - `nvidia/Nemotron-3.5-Super-VL` was verified live on an occupancy-map image at G0. <!-- TODO(FM): say whether the VL tier ran in the recorded runs (vl_proposer) -->
+  - Decision tier: `nvidia/Nemotron-3_5-Lightning`, chosen by a replay bench over recorded decisions, with
+    `nvidia/nemotron-3-super-120b-a12b` only on transport errors; reasoning off.
+  - Hypothesis tier: `nvidia/Nemotron-3.5-Super-VL` proposes up to four hypotheses per replan through a tool call, asynchronously,
+    from the runtime's own map render and the keyframes. Deterministic seeding from the planner is the fallback.
 - **Evidence loop.**
   - Hypotheses are anchored to planner candidates and re-associated by centroid across replans.
   - The verifier tests responder-clearance crossings on the observed occupancy slab.
@@ -58,6 +60,13 @@ classical chooser.
 - **Compute.** The simulator runs on AWS EC2 or a local GPU. Inference is on Token Factory.
 
 ## Results
+
+First live run with the full loop (G1; one run, 90 simulated seconds, descriptive; slower than real time on a loaded host):
+36 decisions, 32 from Nemotron Lightning and 4 classical fallbacks (all 4 from a stale-hypothesis rejection, fixed since);
+21 hypotheses, 15 proposed by the VL model; 14 confirmed, 3 refuted, 3 supported, 1 unresolved at the end. In 15 of 23
+hypothesis-targeted decisions the whole chain closed: targeted move, gate accept, motion, new observation, status change, a
+different next pick. Model cost for the run: about USD 0.25.
+[Run report](https://github.com/CynicPixel/ariadne-nemotron/tree/main/evaluation/runs/nemotron/g1_live-20261028T212942Z-2eda)
 
 <!-- TODO(FM): the F4 table, descriptive and per seed: time to first verified resolution, egress-found time, fallback / invalid /
 out-of-set rates, gate rejections (proposals rejected, counted apart from actions executed), latency p50/p95, tokens, cost.
@@ -83,8 +92,8 @@ Negative or mixed results are stated as they are. -->
 
 ## What's next
 
-- Turning the optional VL annotation into a tested hypothesis proposer, judged against the deterministic seeding on the same
-  verifier.
+- Measuring the VL proposer against deterministic seeding on the same verifier, over more seeds than a hackathon allows
+  (in G1 its terminal hit rate was 12 of 17, a small sample).
 - Real-robot trials. Everything here is simulated.
 
 ## Built with
