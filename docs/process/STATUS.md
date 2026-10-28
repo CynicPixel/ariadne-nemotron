@@ -8,6 +8,8 @@
 - **Upstream:** `integ/nemotron-base` is at `b2b02b2` (the crash reporter also catches SIGABRT/SIGBUS). There is no exit-139 fix yet.
   - M's GPU poller retries g5.2xlarge/g4dn.2xlarge every 20 min for 12 h. When it lands, it runs `b2b02b2` with ORT CUDA vs CPU DNN back to back.
   - S2 stays at 12:00 today, without the backtrace.
+- **GPU capacity (M, 01:35):** g4dn.xlarge is also at placement score 1/10 in all three eu-north-1 AZs. All 60 attempts on 28 Oct
+  17:33–20:33 failed for capacity. No GPU quota is reserved for the fork. Until capacity returns, an F5 recording on AWS GPU is not available.
 
 ## 2026-10-28 10:15 — GPU rerun figures from upstream M (FM)
 
