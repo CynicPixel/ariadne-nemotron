@@ -225,13 +225,17 @@ def test_mcp_list_hypotheses_and_assign_fields(tmp_path):
             other = 1 - int(k)
             bad = await m.call_tool("assign", {"decision_id": r["decision_id"], "assignments": [
                 {"agent": int(k), "candidate": c, "hypothesis_id": "h999"}, {"agent": other, "candidate": 0}]})
+            stale = json.loads((ddir / f"{r['decision_id']}.choice.json").read_text())["assignments"]
             ok = await m.call_tool("assign", {"decision_id": r["decision_id"], "assignments": [
                 {"agent": int(k), "candidate": c, "hypothesis_id": h["hypothesis_id"],
                  "evidence_goal": "look past the frontier for a 0.8 m gap"}, {"agent": other, "candidate": 0}]})
-            return lh, h, bad, ok
-    lh, h, bad, ok = asyncio.run(go())
+            return lh, h, bad, ok, stale
+    lh, h, bad, ok, stale = asyncio.run(go())
     assert lh["enabled"] and lh["rho_responder_m"] == 0.40
-    assert '"recorded":false' in bad.content[0].text.replace(" ", "")
+    # a stale/unknown hypothesis id never costs the decision: recorded without the id, with a note
+    assert '"recorded":true' in bad.content[0].text.replace(" ", "") and "h999" in bad.content[0].text
+    e0 = next(x for x in stale if x["agent"] == int(next(iter(h["anchors"]))))
+    assert "hypothesis_id" not in e0 and "h999" in e0["hypothesis_rejected"]
     assert '"recorded":true' in ok.content[0].text.replace(" ", "")
     choice = json.loads((ddir / f"{r['decision_id']}.choice.json").read_text())["assignments"]
     e = next(x for x in choice if x.get("hypothesis_id"))
@@ -246,9 +250,14 @@ def test_sample_fixture_matches_the_schema():
     """fixtures/hypotheses_sample.jsonl (for FV's console panel) carries every documented key."""
     keys = {"t_utc", "sim_t_s", "decision_id", "event", "hypothesis_id", "agent_id", "anchor", "anchors", "claim",
             "evidence_goal", "status", "status_source", "verifier", "provenance"}
-    lines = [json.loads(x) for x in (Path(__file__).parent / "fixtures" / "hypotheses_sample.jsonl").read_text().splitlines()]
-    assert lines and all(keys <= set(x) for x in lines)
-    assert {x["event"] for x in lines} >= {"created", "status"}
+    fx = Path(__file__).parent / "fixtures"
+    seed = [json.loads(x) for x in (fx / "hypotheses_sample.jsonl").read_text().splitlines()]
+    vl = [json.loads(x) for x in (fx / "hypotheses_sample_vl.jsonl").read_text().splitlines()]
+    for lines in (seed, vl):   # vl_call lines carry hypothesis_id null and their own keys; the panel skips them
+        assert lines and all(keys <= set(x) for x in lines if x["hypothesis_id"])
+    assert {x["event"] for x in seed} >= {"created", "status", "targeted"}
+    assert {x["event"] for x in vl} >= {"created", "status", "vl_call", "vl_annotated", "targeted"}
+    assert all(x["hypothesis_id"] is None and x["outcome"] for x in vl if x["event"] == "vl_call")
 
 
 # --- the VL proposer (F2.4, D319): async one replan behind, validated, logged, seed fallback ---
@@ -335,3 +344,20 @@ def test_vl_hit_rate_counts_terminal_outcomes_only(tmp_path):
     assert hl.hit_rate() == {"n": 4, "hits": 3, "rate": 0.75}
     del hl.h["g"]
     assert hl.hit_rate() == {"n": 3, "hits": 2, "rate": 0.667}
+
+
+def test_recorded_vl_responses_fold_in(tmp_path):
+    """Two REAL Super-VL responses (fixtures/vl_raw, recorded 2026-10-29 ~05:00 IST by a host serve() run of the G1
+    config over llm_live_run5 t20000ms..t30000ms, maps rendered from the recorded slabs) through validate + fold-in."""
+    raw = [json.loads((Path(__file__).parent / "fixtures" / "vl_raw" / f"seen_{d}.json").read_text())["response"]
+           for d in ("t20000ms", "t25000ms")]
+    reqs = {r["decision_id"]: r for r in corpus_requests(tmp_path)}
+    hl, fake = _vl_layer(tmp_path, raw)
+    for d in ("t20000ms", "t25000ms", "t30000ms"):
+        _step(hl, reqs[d])
+    calls = [json.loads(x) for x in (tmp_path / "run" / "hypotheses.jsonl").read_text().splitlines()
+             if json.loads(x)["event"] == "vl_call"]
+    assert [c["outcome"] for c in calls] == ["ok", "ok"] and all(c["created_or_annotated"] for c in calls)
+    assert all(c["orchestrator"]["model"] == "nvidia/Nemotron-3.5-Super-VL" for c in calls)
+    vl = [h for h in hl.h.values() if h.get("predicts")]
+    assert vl and all(h["predicts"] in ("passage", "dead_end") for h in vl)

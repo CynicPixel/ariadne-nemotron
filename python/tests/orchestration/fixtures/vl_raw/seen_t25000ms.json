@@ -1,0 +1,134 @@
+{
+ "request": {
+  "model": "nvidia/Nemotron-3.5-Super-VL",
+  "max_tokens": 2048,
+  "temperature": 0.0,
+  "tools": [
+   {
+    "type": "function",
+    "function": {
+     "name": "propose_hypotheses",
+     "description": "Hypotheses about candidate frontiers, each tied to one listed candidate.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "hypotheses"
+      ],
+      "properties": {
+       "hypotheses": {
+        "type": "array",
+        "maxItems": 4,
+        "items": {
+         "type": "object",
+         "required": [
+          "agent",
+          "candidate",
+          "predicts",
+          "rationale"
+         ],
+         "properties": {
+          "agent": {
+           "type": "integer"
+          },
+          "candidate": {
+           "type": "integer"
+          },
+          "predicts": {
+           "type": "string",
+           "enum": [
+            "passage",
+            "dead_end"
+           ]
+          },
+          "rationale": {
+           "type": "string",
+           "description": "one sentence: what in the images suggests it"
+          },
+          "prior": {
+           "type": "number",
+           "description": "your probability that the prediction holds"
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  ],
+  "tool_choice": "auto",
+  "extra_body": {
+   "reasoning_effort": "none"
+  }
+ },
+ "n_messages": 2,
+ "latency_s": 1.965,
+ "response": {
+  "id": "chatcmpl-8b39edc5605a4a05",
+  "choices": [
+   {
+    "finish_reason": "tool_calls",
+    "index": 0,
+    "logprobs": null,
+    "message": {
+     "content": null,
+     "refusal": null,
+     "role": "assistant",
+     "annotations": null,
+     "audio": null,
+     "function_call": null,
+     "tool_calls": [
+      {
+       "id": "chatcmpl-tool-b44142dc602b179c",
+       "function": {
+        "arguments": "{\"hypotheses\": [{\"agent\": 0, \"candidate\": 0, \"predicts\": \"passage\", \"rationale\": \"The keyframe shows a wide white free-space corridor ahead, consistent with a 0.40 m passage opening at the nearby frontier.\", \"prior\": 0.75}, {\"agent\": 0, \"candidate\": 6, \"predicts\": \"dead_end\", \"rationale\": \"The keyframe shows the free space narrowing to a small alcove with no visible through-passage beyond the frontier.\", \"prior\": 0.7}, {\"agent\": 1, \"candidate\": 0, \"predicts\": \"passage\", \"rationale\": \"The keyframe shows an open white corridor extending forward, suggesting the nearby frontier leads to a usable passage.\", \"prior\": 0.75}, {\"agent\": 1, \"candidate\": 22, \"predicts\": \"dead_end\", \"rationale\": \"The keyframe shows free space bounded by walls on both sides with no opening beyond the frontier, indicating a dead end.\", \"prior\": 0.7}]}",
+        "name": "propose_hypotheses"
+       },
+       "type": "function"
+      }
+     ],
+     "reasoning_content": null
+    },
+    "stop_reason": null,
+    "token_ids": null,
+    "routed_experts": null
+   }
+  ],
+  "created": 1793223251,
+  "model": "nvidia/Nemotron-3.5-Super-VL",
+  "object": "chat.completion",
+  "metadata": null,
+  "moderation": null,
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.1.dev1+g1bed5fc81-tp2-9705eecb",
+  "usage": {
+   "completion_tokens": 268,
+   "prompt_tokens": 8136,
+   "total_tokens": 8404,
+   "completion_tokens_details": {
+    "accepted_prediction_tokens": null,
+    "audio_tokens": null,
+    "reasoning_tokens": 0,
+    "rejected_prediction_tokens": null,
+    "text_tokens": null
+   },
+   "prompt_tokens_details": {
+    "audio_tokens": null,
+    "cache_write_tokens": null,
+    "cached_tokens": 0,
+    "image_tokens": null,
+    "text_tokens": null,
+    "created_cache_tokens": 4352,
+    "multimodal_tokens": {
+     "image": 274
+    }
+   }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+ }
+}

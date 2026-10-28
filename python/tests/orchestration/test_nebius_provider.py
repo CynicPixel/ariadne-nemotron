@@ -274,3 +274,10 @@ def test_bench_score_mirrors_the_gate():
     assert score(req, [{"agent": 0, "candidate": 1, "approval_id": "t1ms-a0-c1"}, {"agent": 1, "candidate": 1}])["agents"] \
         == {0: "ok", 1: "ok"}
     assert score(req, [{"agent": 0, "candidate": 0}, {"agent": 1, "candidate": 0}])["agents"][1] == "same_cluster"
+
+
+def test_b2_config_extends_and_turns_hypotheses_off():
+    b2 = load_config(REPO / "configs" / "llm" / "nemotron_b2.yaml")
+    assert b2["hypothesis"]["enabled"] is False
+    assert b2["decision"]["chain"] == CFG["decision"]["chain"] and b2["prices_usd_per_mtok"] == PRICES
+    assert b2["hypothesis"]["model"] == CFG["hypothesis"]["model"]   # merged, not replaced
