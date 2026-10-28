@@ -39,7 +39,7 @@ case "$cmd" in
       -f infra/docker/opencv-base.Dockerfile infra/docker
     $S/core.sh image
     DOCKER_BUILDKIT=1 docker build -t ariadne/sim:dev -f infra/docker/sim.Dockerfile .
-    DOCKER_BUILDKIT=1 docker build -t ariadne-orchestrator:1 -f infra/docker/orchestrator.Dockerfile infra/docker
+    DOCKER_BUILDKIT=1 docker build -t ariadne-orchestrator:nemotron-1 -f infra/docker/orchestrator.Dockerfile infra/docker
     $S/live.sh build ;;
   test)
     need docker
