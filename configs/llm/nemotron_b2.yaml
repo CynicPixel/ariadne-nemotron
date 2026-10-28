@@ -1,0 +1,7 @@
+# F4 ablation B2: Nemotron decision tier, hypothesis layer OFF (no list_hypotheses state, no VL proposer, no verifier
+# traces). Everything else is nemotron.yaml's (D319 chain, prices, budget). B4 = nemotron.yaml as is.
+#   ARIADNE_LLM_CONFIG=configs/llm/nemotron_b2.yaml infra/scripts/live.sh run ...
+extends: nemotron.yaml
+credentials: nebius                  # infra/scripts/live.sh reads THIS line (it cannot resolve `extends`) to pick the credential path
+hypothesis:
+  enabled: false

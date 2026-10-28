@@ -184,7 +184,7 @@ def assign(decision_id: str, assignments: list[dict]) -> dict:
     r = _req(decision_id)
     agents = {a["agent"]: a for a in r["agents"]}
     hyps = _open_hypotheses(decision_id)
-    seen, clean = set(), []
+    seen, clean, notes = set(), [], []
     for e in assignments:
         k, c = int(e.get("agent", -9)), int(e.get("candidate", -9))
         if k not in agents or k in seen:
@@ -192,22 +192,22 @@ def assign(decision_id: str, assignments: list[dict]) -> dict:
         if not -1 <= c < len(agents[k]["candidates"]):
             return {"recorded": False, "detail": f"agent {k}: candidate {c} is out of range; assign again"}
         hid = str(e.get("hypothesis_id") or "")
-        if hid and hid not in hyps:
-            return {"recorded": False, "detail": f"agent {k}: hypothesis {hid!r} is not an open hypothesis; "
-                                                 "omit it or pick one from list_hypotheses"}
         seen.add(k)
         rec = {"agent": k, "candidate": c, "reason": str(e.get("reason", ""))[:300],
                "approval_id": str(e.get("approval_id", ""))}
-        if hid:
+        if hid and hid in hyps:
             rec["hypothesis_id"] = hid
             rec["hypothesis_anchored"] = hyps[hid].get("anchors", {}).get(str(k)) == c
+        elif hid:   # a stale or unknown id never costs the decision: the move is recorded, the id is not
+            rec["hypothesis_rejected"] = f"{hid[:40]} is not an open hypothesis at this replan"
+            notes.append(f"agent {k}: {rec['hypothesis_rejected']} (move recorded without it)")
         if e.get("evidence_goal"):
             rec["evidence_goal"] = str(e["evidence_goal"])[:200]
         clean.append(rec)
     if seen != set(agents):
         return {"recorded": False, "detail": f"assign every agent: {sorted(agents)}"}
     (DIR / f"{decision_id}.choice.json").write_text(json.dumps({"assignments": clean}))
-    return {"recorded": True}
+    return {"recorded": True, **({"notes": notes} if notes else {})}
 
 
 if __name__ == "__main__":

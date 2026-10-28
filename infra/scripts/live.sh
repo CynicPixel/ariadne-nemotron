@@ -95,7 +95,7 @@ start_orchestrator() {   # -> appends its container id; returns once <run>/choos
   [ -f "$REPO_ROOT/$LLM_CONFIG" ] || { log "no LLM config $LLM_CONFIG"; exit 1; }
   local cred=() orch_cmd=(python -m orchestration.orchestrator --socket "/work/$run/chooser.sock" --dir "/work/$run/decisions"
                           --llm-config "/work/$LLM_CONFIG")
-  if grep -q '^ *- provider: *nebius' "$REPO_ROOT/$LLM_CONFIG"; then
+  if grep -q '^credentials: *nebius' "$REPO_ROOT/$LLM_CONFIG"; then   # fork D311: the config names its credential path
     # Fork D312/D313: Nemotron on Nebius Token Factory. The key file is handed to docker as --env-file (docker reads
     # it; it never reaches a command line, a log or the run dir; this script never opens it). The spend ledger is
     # the host file, bind-mounted alone (never ~/.config/ariadne/, which holds the key): HOME=/tmp in the container

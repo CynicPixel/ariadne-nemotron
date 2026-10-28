@@ -1,6 +1,7 @@
 # The chooser's LLM chain on Nebius Token Factory (D310-D313). Model IDs are D301's, exactly as GET /v1/models served
 # them on 2026-10-29 (note the casing and Lightning's underscore). Never put a model ID in code; never put the key here.
 # Passed as: python -m orchestration.orchestrator --llm-config configs/llm/nemotron.yaml
+credentials: nebius                  # infra/scripts/live.sh reads THIS line (it cannot resolve `extends`) to pick the credential path
 nebius:
   base_url: https://api.tokenfactory.nebius.com/v1   # D301 [VERIFIED G0]
   api_key_env: NEBIUS_API_KEY        # set by docker --env-file ~/.config/ariadne/nebius.env; never read by scripts

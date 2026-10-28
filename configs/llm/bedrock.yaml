@@ -1,5 +1,6 @@
 # The inherited Bedrock chain (D84, agentic.md D156-D160), kept as an optional comparator only (CLAUDE.md §1).
 # These are the constants that lived at orchestrator.py:35-36 before D311.
+credentials: bedrock                  # infra/scripts/live.sh reads THIS line (it cannot resolve `extends`) to pick the credential path
 bedrock:
   region: eu-north-1
 prices_usd_per_mtok: {}              # Bedrock calls are not on the Token Factory ledger
