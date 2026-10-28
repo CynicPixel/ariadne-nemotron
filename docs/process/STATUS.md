@@ -1,5 +1,26 @@
 # Status (newest first; times IST)
 
+## 2026-10-28 ~10:00 — S0 sync done (FM): base line merged, worktrees opened, bootstrap started
+
+- **Base line:** upstream M delivered `integ/nemotron-base` at `140957f` = main `0ca523c` + `perf/live-decision-path` `fd63fcc`.
+  M's checks: build clean with ARIADNE_WITH_ORT=ON; `ctest -R 'LiveLink|Egress|HardPair'` 23/23 (models env set); planner and
+  worker suites 75/75; recon `test_live.py` 18/18. Merged into the fork's main as **S0 (`8c0d1b4`)**, no conflicts.
+- **Session worktrees** (F0 user rule: FP and FV talk only to FM; only FM talks to upstream M, live path only):
+  - `/data/code/ariadne-nemotron-fp`, branch `fp/nemotron-layer` (FP);
+  - `/data/code/ariadne-nemotron-fv`, branch `fv/rebrand` (FV).
+  
+  Both fast-forwarded to `8c0d1b4`.
+- **F0.4 bootstrap started:**
+  - copies of Ariadne's `.cache/{ccache-docker,fetchcontent-docker,models,fixtures}`;
+  - the runtime built with the existing `ariadne/core-dev:dev` image (`ARIADNE_SKIP_DEV_BUILD=1`; `core.Dockerfile` unchanged since 2026-09-29, so no shared image is rebuilt);
+  - `ctest -R 'LiveLink|Egress'`;
+  - `live.sh build`;
+  - console esbuild.
+  
+  Timing goes here when it finishes.
+- **Fork gotchas from M:** ORT builds need `LD_LIBRARY_PATH` at the onnxruntime lib for gtest discovery. The GPU live path needs `ARIADNE_RT_GPU=1` and
+  the `_ortcuda` live config. The ORT payload recipe for F5 has been asked of M.
+
 ## 2026-10-28 09:00 — Fork opened (FM): F0.1 done, D300–D349 claimed
 
 - **Fork:** `/data/code/ariadne-nemotron`, cloned from the local Ariadne at `0ca523c`. Full history kept (D300).
