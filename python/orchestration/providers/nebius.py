@@ -30,6 +30,7 @@ from pathlib import Path
 from .base import NUDGE, Provider, call_tool, chosen, first_prompt
 from .ledger import Ledger, ledger_path
 
+TERSE = "Your reply was cut off. No prose: call the tools you need, then assign."
 THINK = re.compile(r"<think>.*?(</think>|$)", re.S)
 
 
@@ -91,6 +92,7 @@ class NebiusProvider(Provider):
                        log: dict) -> bool:
         did, model = req["decision_id"], spec["model"]
         msgs = [{"role": "system", "content": system}, {"role": "user", "content": first_prompt(req)}]
+        lengths = 0   # consecutive cut-off turns with no tool call
         while log["calls"] < max_calls:
             resp, _, usd = await asyncio.to_thread(self.chat, spec, msgs, tools_cfg, f"{self.purpose}:{did}")
             log["calls"] += 1
@@ -111,6 +113,22 @@ class NebiusProvider(Provider):
             if text.strip():
                 log["model_text"].append(text.strip()[:400])
             calls = list(msg.tool_calls or [])
+            if not calls and ch.finish_reason == "length":
+                # G2 t120000ms: Lightning degenerated ("H\n\n\n...") at ~66k context and the loop re-sent each garbage
+                # turn, 9x / 47.7 s. A cut-off turn with no tool call is dropped from the history (never re-sent),
+                # retried once with a terse nudge, and the second in a row ends the turn (C++: classical fallback).
+                lengths += 1
+                log["errors"].append(f"{model}: finish_reason length with no tool call (max_tokens "
+                                     f"{spec.get('max_tokens', 512)})")
+                if text.strip():   # keep only a stub of the cut-off text in the trace
+                    log["model_text"][-1] = log["model_text"][-1][:80]
+                if lengths >= 2:
+                    log["errors"].append(f"{model}: stopped after 2 cut-off turns")
+                    return chosen(ddir, did)
+                if msgs[-1].get("content") != TERSE:
+                    msgs.append({"role": "user", "content": TERSE})
+                continue
+            lengths = 0
             out = {"role": "assistant", "content": text or None}
             if calls:
                 out["tool_calls"] = [{"id": c.id, "type": "function",
@@ -118,9 +136,6 @@ class NebiusProvider(Provider):
                                      for c in calls]
             msgs.append(out)
             if not calls:
-                if ch.finish_reason == "length":
-                    log["errors"].append(f"{model}: finish_reason length with no tool call (max_tokens "
-                                         f"{spec.get('max_tokens', 512)})")
                 msgs.append({"role": "user", "content": NUDGE})
                 continue
             parts = []

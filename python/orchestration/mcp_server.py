@@ -191,6 +191,25 @@ def assign(decision_id: str, assignments: list[dict]) -> dict:
             return {"recorded": False, "detail": f"agent {k} is not decided at this replan, or is listed twice"}
         if not -1 <= c < len(agents[k]["candidates"]):
             return {"recorded": False, "detail": f"agent {k}: candidate {c} is out of range; assign again"}
+        hid0 = str(e.get("hypothesis_id") or "")
+        want = hyps.get(hid0, {}).get("anchors", {}).get(str(k)) if hid0 else None
+        if want is not None and c != want:
+            # G2 t95000ms: the reason described h020's frontier (candidate 0) but the index sent was 53. A hypothesis
+            # is tested by the candidate it is anchored to; catch the index slip here, before the gate does.
+            g = agents[k]["candidates"][want]["goal_xy_m"]
+            return {"recorded": False, "detail": f"agent {k}: hypothesis {hid0} is tested by candidate {want} (goal "
+                    f"{g}), not candidate {c}; send candidate {want}, or drop hypothesis_id if you meant {c}"}
+        if c >= 0 and agents[k]["candidates"][c].get("needs_approval"):
+            # mirrors the C++ gate (which stays the authority): without an approved request this pick would only be
+            # rejected there and replaced by the classical choice. Say so now, while the model can still ask.
+            aid = f"{decision_id}-a{k}-c{c}"
+            v = Path(r["approvals_dir"]) / f"{aid}.json"
+            verdict = json.loads(v.read_text()).get("verdict") if v.exists() else None
+            if str(e.get("approval_id", "")) != aid or verdict != "approved":
+                return {"recorded": False, "detail": f"agent {k}: candidate {c} has risk "
+                        f"{agents[k]['candidates'][c]['risk']:.2f} above the threshold {r['autonomous_threshold']}: "
+                        f"call request_human_approval(agent={k}, candidate={c}) first and pass approval_id {aid!r} "
+                        f"if approved, or pick another candidate" + (f" (verdict: {verdict})" if verdict else "")}
         hid = str(e.get("hypothesis_id") or "")
         seen.add(k)
         rec = {"agent": k, "candidate": c, "reason": str(e.get("reason", ""))[:300],
