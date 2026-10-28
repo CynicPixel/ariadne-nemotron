@@ -1,5 +1,14 @@
 # Status (newest first; times IST)
 
+## 2026-10-29 01:30 — Internal G0 no-go time passed (FM)
+
+- **No Nebius key** at `~/.config/ariadne/nebius.env` as of 01:26. The plan's hard no-go (29 Oct 00:00) has passed without G0.
+  The hackathon deadline (30 Oct 22:30) still stands. Whether to continue on a compressed plan is the user's call.
+- **FP and FV never started:** `fp/nemotron-layer` and `fv/rebrand` are 0 commits ahead of main. F1, F2 and F3 have not started.
+- **Upstream:** `integ/nemotron-base` is at `b2b02b2` (the crash reporter also catches SIGABRT/SIGBUS). There is no exit-139 fix yet.
+  - M's GPU poller retries g5.2xlarge/g4dn.2xlarge every 20 min for 12 h. When it lands, it runs `b2b02b2` with ORT CUDA vs CPU DNN back to back.
+  - S2 stays at 12:00 today, without the backtrace.
+
 ## 2026-10-28 10:15 — GPU rerun figures from upstream M (FM)
 
 - **M's g4dn.xlarge rerun 046ee9** (`3dad564`, classical chooser, 100 s, RT_MEM=10g):
