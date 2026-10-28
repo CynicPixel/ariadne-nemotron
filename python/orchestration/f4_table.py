@@ -96,9 +96,9 @@ def row(run: Path) -> dict:
         recs = by_did.get(did, [])
         a0 = next((answer_of(x) for x in recs if answer_of(x)), None)
         lat = ((a0 or {}).get("orchestrator") or {}).get("latency_s")
-        val = next((x["choice"].get("validation") for x in recs if x["agent"] == k), None)
+        aval = next((x["choice"].get("validation") for x in recs if x["agent"] == k), None)
         approvals.append({"decision_id": did, "agent": k, "candidate": c, "decision_latency_s": lat,
-                          "agent_validation": val, "became_fallback": bool(val and val.startswith("timeout"))})
+                          "agent_validation": aval, "became_fallback": bool(aval and aval.startswith("timeout"))})
     orch = [answer_of(r)["orchestrator"] for r in trace if r["agent"] == min(x["agent"] for x in trace)
             and answer_of(r) and answer_of(r).get("orchestrator")]
     lat = [o["latency_s"] for o in orch if o.get("latency_s") is not None]
