@@ -1,0 +1,209 @@
+schema: 1
+execution: live
+demo: true
+lockstep: false
+agents: 2
+sensor_policy: latest_stereo
+mapping_owner: per_agent_mission
+collaboration_enabled: true
+allocation_identity: broker_and_members_v1
+chooser: classical
+energy_source: estimated_odometry
+target_mode: known_briefing_coordinate
+mission_completion_scored: false
+required_evidence: runtime activity and mission outcome checks remain separate from configuration
+perception:
+  name: sim_v1_rad_flat
+  features:
+    grid_cols: 12
+    grid_rows: 7
+    max_keypoints: 1500
+    detect_oversample: 4
+    orb_fast_threshold: 20
+    orb_fast_threshold_min: 7
+    orb_levels: 8
+    orb_scale_factor: 1.2
+    orb_patch_size: 31
+  tracker:
+    win_size: 21
+    max_level: 3
+    term_max_iterations: 30
+    term_epsilon: 0.01
+    min_eig_threshold: 1.0e-4
+    fb_threshold_px: 0.5
+    border_px: 1
+    target_tracks: 500
+    min_track_distance_px: 25.0
+    replenish_request_factor: 4
+    f_ransac_threshold_px: 1.0
+    f_confidence: 0.99
+    f_max_iterations: 1000
+    f_min_points: 15
+    degraded_min_tracks: 30
+  stereo:
+    min_disparity: 0
+    num_disparities: 240
+    block_size: 5
+    p1_coefficient: 8.0
+    p2_coefficient: 32.0
+    uniqueness_ratio: 15
+    speckle_window_size: 200
+    speckle_range: 2
+    disp12_max_diff: 1
+    pre_filter_cap: 63
+    mode: sgbm_3way
+    sigma_disparity_px: 0.5
+    required_min_range_m: 0.30
+    support_window_px: 31
+    support_min_density: 0.75
+  stereo_match:
+    win_size: 21
+    max_level: 3
+    fb_threshold_px: 0.5
+    max_dy_px: 1.0
+    row_refinement: true
+    row_search_px: 4.0
+    row_min_matches: 100
+    row_min_span: 0.5
+    exposure_match: true
+  radiometric:
+    mode: flat_only
+slam:
+  name: sim_v2_loops
+  triangulation:
+    min_depth_m: 0.29
+    max_reprojection_px: 2.0
+    sgbm_gate_sigma: 3.0
+    disparity_sigma_px: 0.5
+    max_relative_sigma: 0.1
+  pnp:
+    ransac_threshold_px: 2.0
+    confidence: 0.999
+    max_iterations: 200
+    min_correspondences: 15
+    min_inliers: 12
+    huber_delta: 2.0
+    sigma_px: 1.0
+  keyframe:
+    ref_ratio: 0.75
+    min_tracked_landmarks: 50
+    max_interval_s: 1.0
+  ba:
+    huber_delta: 2.0
+    max_iterations: 10
+    sigma_px: 1.0
+    backend: window
+    window_size: 10
+    chi2_reject: 5.991
+    cull_after_keyframes: 2
+    min_keyframe_observations: 2
+    rel_energy_tolerance: 1.0e-6
+    step_norm_tolerance: 1.0e-8
+    min_gradient_tolerance: 1.0e-8
+  lost:
+    motion: bridge
+    reanchor: every_frame
+    bridge_threshold_px: 1.5
+    bridge_min_tracks: 20
+    model_ratio: 0.45
+    velocity_decay_s: 0.5
+    max_speed_m_s: 3.0
+    reanchor_min_points: 30
+  imu:
+    mode: full
+    seed_lk: false
+    bias_window: 200
+    stationary_s: 2.0
+    kp: 1.0
+    ki: 0.3
+    full:
+      noise_inflation_gyro: 1
+      noise_inflation_accel: 1
+      bias_prior_inflation: 10
+      init_keyframes: 10
+      init_accel_bias_sigma: 0.2
+      init_gravity_tolerance: 0.1
+      init_max_chi2_per_dof: 100
+      refine_after_s: [5, 15]
+      estimate_gravity: false
+      repropagate_gyro: 0.01
+      repropagate_accel: 0.1
+      lost_motion: decay
+    gravity_prior:
+      stride_keyframes: 10
+      source: attitude
+      attitude_sigma_deg: 2.3
+  loop_closure:
+    enabled: true
+    orb_features: 500
+    exclude_recent: 50
+    exclude_seconds: 10.0
+    min_score: 0.5
+    top_k: 3
+    noise_model: true
+    noise_k_t: 1.33
+    noise_floor_t_m: 0.014
+    noise_k_r: 0.178
+    noise_floor_r_rad: 0.0095
+    gravity_priors: false
+live:
+  name: live_demo_final_profile_1500
+  mode: demo
+  end_s: 30
+  lens: false
+  chooser: classical
+  command:
+    max_length_m: 3.0
+    simplify_eps_cells: 1.0
+    face_frontier: true
+    min_goal_m: 1.0
+    escape_m: 0.5
+    max_standoff_m: 2.0
+    refused_radius_m: 0.5
+  risk_gate:
+    autonomous_threshold: 0.5
+  llm:
+    timeout_s: 120.0
+  estimator_processes: true
+  lockstep: false
+  reorder:
+    hold_back_ms: 3000
+  telemetry_hz: 20.0
+  multiagent:
+    enabled: true
+    scenario: configs/comms/ideal.yaml
+    broker_mode: plain
+    consensus_timeout_s: 10.0
+    max_bid_options: 8
+  collab:
+    enabled: true
+    config: configs/collab/collab_final_e2e.yaml
+    feature_latency_s: 3.0
+    worker_threads: 4
+    keep_s: 120
+    models:
+      place: .cache/models/eigenplaces_sim_ref/eigenplaces_r50_256_640x360.onnx
+      place_size: 640x360
+      aliked: .cache/models/aliked_lg_sim_ref/aliked_n16_k1024_1280x720.onnx
+      lightglue: .cache/models/aliked_lg_sim_ref/lightglue_aliked.onnx
+planner:
+  name: mission_v2
+  base: mission_v1
+  planner:
+    policy: ariadne
+    random_seed: 0
+    allocator: cbba
+    max_bundle: 1
+    risk_calibrated: true
+  energy:
+    end_s: 1500.0
+    speed_mps: 0.6
+    e_total_m: 900.0
+    e_per_m: 1.0
+    reserve: 1.3
+  nbv:
+    rays_grid: 16
+    rank_grid: 8
+    tare_subspace_m: 6.0
+    cost_time: none
+    view_yaw: target

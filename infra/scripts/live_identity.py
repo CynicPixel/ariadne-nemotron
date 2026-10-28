@@ -20,6 +20,9 @@ def main():
     parser.add_argument("--image", required=True)
     parser.add_argument("--commit")
     parser.add_argument("--dirty", default="false")
+    parser.add_argument("--allow-binary-change", action="store_true",
+                        help="profiling-only replay: run a different runtime binary; recorded in "
+                             "replay_identity_override.json, never a determinism replay")
     args = parser.parse_args()
     path = args.run / "runtime_identity.json"
     if args.mode == "record":
@@ -46,7 +49,12 @@ def main():
     if data.get("image_digest") != args.image:
         raise SystemExit("replay identity: container image differs from the recorded image")
     if data.get("binary_sha256") and data["binary_sha256"] != digest(args.binary):
-        raise SystemExit("replay identity: runtime binary differs from the recorded binary")
+        if not args.allow_binary_change:
+            raise SystemExit("replay identity: runtime binary differs from the recorded binary")
+        (args.run / "replay_identity_override.json").write_text(json.dumps(
+            {"profile_only": True, "recorded_binary_sha256": data["binary_sha256"],
+             "replay_binary_sha256": digest(args.binary)}, indent=2) + "\n")
+        print("replay identity: PROFILE-ONLY replay with a different runtime binary (not a determinism replay)")
     if not data.get("git_commit") or data["git_commit"] == "UNRECORDED":
         raise SystemExit("replay identity: recorded source identity is missing")
     env = {"ARIADNE_GIT_COMMIT": data["git_commit"],

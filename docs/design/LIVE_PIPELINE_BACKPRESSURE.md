@@ -1,0 +1,214 @@
+# Live pipeline latency, scheduling and overload control
+
+Updated: 2026-10-27. Branch: `fix/live-pipeline-final`.
+This is the persistent implementation/research record for the final live pipeline.
+Frontend work is outside this change. Main is untouched.
+
+## Objective and evidence
+
+Run the adopted estimator, collaborative mapping/planning and online reconstruction
+on a free-running simulated world, with bounded observation and command age. RTF >1
+is desirable, but throughput alone does not demonstrate a functioning feedback loop.
+Whole stereo pairs may be dropped in demo mode; IMU intervals must be retained or a
+gap must cause an explicit estimator response. Lockstep evidence stays lossless.
+
+The completed 30-s cloud smoke (`20261026T165827Z-gpu-ec5893`) processed
+106/111 agent frames, integrated 15/16 keyframes and trained 36 reconstruction
+keyframes. Runtime wall time was 206.103 s (RTF 0.145558). It exited successfully,
+but the decision stamped 5 s was applied at 29.901 s and both recorded ground-truth
+translation paths were zero. This establishes transport/trainer liveness, not
+exploration, planner convergence or map completeness. Replay was skipped.
+Small durable artifacts are in `evaluation/runs/live_pipeline_final/smoke30/`;
+full artifacts are under the run ID in S3 bucket `ariadne-836505524290-eun1`.
+
+Confirmed code hazards: blocking socket writes inside image callbacks; shared
+single-threaded component executor; reliable history depth 500 for all sensor
+subscriptions. At 20 Hz, 500 images can represent 25 simulated seconds of backlog.
+This capacity is consistent with the observed delay, but is not a measured
+attribution of the entire delay. Stage-level tracing must establish that.
+
+## Primary-source research and application
+
+1. **Callback/executor isolation.** ROS 2's default mutually exclusive callback
+   group serializes its callbacks even with a multithreaded executor. Explicit
+   groups can be assigned to separate executors. Our component container is
+   actually single-threaded, making dedicated execution capacity necessary.
+   [Jazzy callback groups](https://github.com/ros2/ros2_documentation/blob/jazzy/source/How-To-Guides/Using-callback-groups.rst)
+   and [executors](https://github.com/ros2/ros2_documentation/blob/jazzy/source/Concepts/Intermediate/About-Executors.rst).
+   Application: demo clock, IMU and supervisory callbacks use a private executor;
+   image serialization remains on the container executor. Each serialization
+   buffer remains confined to a mutually exclusive callback group.
+
+2. **Freshness at ingress.** ROS SensorDataQoS favors small histories and best
+   effort delivery. QoS compatibility must be checked at both endpoints.
+   [Jazzy QoS](https://github.com/ros2/ros2_documentation/blob/jazzy/source/Concepts/Intermediate/About-Quality-of-Service-Settings.rst).
+   Application: demo image subscriptions use depth 2 / best effort. Non-image
+   data retains reliable delivery. The downstream stereo queue accepts complete
+   matching pairs, preserves an in-flight partner and discards stale pairs.
+   Small DDS histories alone do not provide stereo synchronization or IMU continuity.
+
+3. **Sensor-specific synchronization.** Isaac ROS VSLAM exposes separate image
+   synchronizer and IMU sequencer buffers, QoS, timestamp matching and jitter checks.
+   [Pinned release 3.1 interface](https://nvidia-isaac-ros.github.io/v/release-3.1/repositories_and_packages/isaac_ros_visual_slam/isaac_ros_visual_slam/index.html).
+   Application: retain all IMU samples between selected stereo timestamps; record
+   accepted-frame intervals and explicitly detect gaps. Do not copy buffer defaults
+   from another release or assume arbitrary frame skipping preserves tracking.
+
+4. **Periodic control with independent scheduling.** Nav2 exposes controller
+   frequency, costmap update timeout and optional elevated priority; ros2_control
+   attempts FIFO scheduling for its main loop.
+   [Nav2 Jazzy](https://docs.nav2.org/jazzy/configuration_and_development/configuration_guide/core_servers/controller_server/),
+   [ros2_control Jazzy](https://control.ros.org/jazzy/doc/ros2_control/controller_manager/doc/userdoc.html).
+   Application: command supervision and communication heartbeats should advance
+   independently of map integration, graph solves, DNNs, LLM calls and splat training.
+   Current radio catch-up repairs skipped horizons but is still decision-driven.
+   Elevated scheduler priority is deferred until blocking dependencies are removed.
+
+5. **Asynchronous transport with bounded overload.** Jazzy rmw_fastrtps supports
+   background publication and documents synchronous default publication.
+   [Implementation documentation](https://github.com/ros2/rmw_fastrtps/blob/jazzy/README.md).
+   Application: use a dedicated bounded socket sender, with fair image/control
+   servicing and explicit overflow failure for indispensable data. Changing DDS
+   settings cannot fix the application's own blocking Unix socket. One shared
+   socket still permits head-of-line delay behind an in-flight image; separate
+   bulk/control channels are a possible later improvement if measured necessary.
+
+6. **Reduce serialization/copy cost.** NITROS avoids unnecessary CPU/GPU copies
+   between compatible nodes through type adaptation/negotiation.
+   [NVIDIA explanation](https://nvidia-isaac-ros.github.io/v/release-3.1/faq/index.html).
+   Application: select owned stereo messages before serialization, then consider
+   shared memory. NITROS is not a drop-in acceleration for the current Unix protocol.
+   Current sender still serializes and copies before its pair-selection queue.
+
+7. **Trace latency distributions.** ROS tracing exposes callback events/durations.
+   [Jazzy tutorial](https://github.com/ros2/ros2_documentation/blob/jazzy/source/Tutorials/Advanced/ROS2-Tracing-Trace-and-Analyze.rst).
+   Add application timestamps at capture, ROS receipt, socket enqueue/write,
+   estimator start/end, decision and command application. Use monotonic wall clocks
+   for processing latency and simulation stamps for world-state age. Report p50,
+   p95, p99, maximum, sample counts, drops and queue peaks. Existing bridge latency
+   uses clock receipt as a proxy and cannot establish complete capture latency.
+
+## Implementation sequence and acceptance
+
+- [x] Nonblocking sensor demultiplexing; bounded latest stereo queue; explicit IMU
+  overflow; worker failures propagated; map ingestion and allocation identity fixes.
+- [x] Dedicated fair socket sender for demo, with no socket lock held across I/O
+  that also protects statistics. Lossless mode retains existing semantics.
+- [x] Radio tick cursor covers intervals skipped by demo planning horizons.
+- [x] Implement demo-only private executor for non-image/clock/supervisory callbacks,
+  plus depth-2 image ingress. ROS build passed; live validation pending.
+- [x] Expose `LIVE_AWS_INSTANCE_TYPE`; smoke defaults to `g4dn.2xlarge` after the
+  approved quota increase. Preserve generic launcher defaults for other experiments.
+- [ ] Live validation: actual translation, current commands, bounded queues, both
+  agents ingesting maps, collaboration events, online optimizer progress, clean exit.
+- [ ] Independently scheduled communication/control; command expiry and per-stage
+  age diagnostics; bounded DNN concurrency; model/GPU warmup before mission unpause.
+- [ ] Select owned stereo messages before serialization if profiling justifies it.
+- [ ] Independent map/planner and reconstruction intake/training workers; coherent
+  map corrections; hidden visual target; completion-aware allocation and seed sweep.
+
+Overload tests should deliberately slow image consumption and reconstruction.
+Clock/IMU/control must keep progressing; image backlog must remain bounded; stale
+commands must be superseded or rejected. Track maximum accepted-pair gap and VIO
+health. Map/route quality and mission completion require their own GT scoring.
+A passing process exit and smooth render are insufficient acceptance criteria.
+
+## Compute approval and experiment interpretation
+
+AWS support approved **8 vCPUs** for Stockholm **All G and VT Spot Instance Requests**,
+partially fulfilling the requested 16. User supplied approval on 2026-10-27;
+`service-quotas get-service-quota` independently returned 8.0.
+Next host: `g4dn.2xlarge` (8 vCPU, 32 GiB, one T4), subject to Spot capacity.
+It doubles CPU/RAM versus the preceding g4dn.xlarge; GPU count remains one.
+This quota is aggregate concurrent G/VT Spot vCPU capacity, not a per-instance grant.
+No 16-vCPU GPU host or two simultaneous 8-vCPU GPU hosts fit it.
+
+The larger host should relieve CPU contention, but no speedup is claimed before
+measurement. Since bridge changes and host size both change, the next smoke is an
+integration test, not an isolated hardware speedup benchmark. Keep resolved source,
+config, host type, startup costs and stage timings in the evidence manifest.
+
+### Verification launch checkpoint
+
+Commit `ec1e614` contains callback isolation/sender changes and research; `b684a53`
+adds the feedback audit (four synthetic tests passed) and capacity retry controls.
+The ROS bridge build passed; queue/scheduling changes passed 102 unit and 21
+focused tests. The audit reproduces zero translation and 24.901 s command age in
+the earlier 30-s smoke and distinguishes absent GT evidence from zero motion.
+
+All three Stockholm AZs rejected `g4dn.2xlarge` with InsufficientInstanceCapacity.
+The same binary payload was therefore launched on `g5.2xlarge` (8 vCPU, A10G) in
+1b: run `20261026T214842Z-gpu-beb510`, instance `i-0b24eed3230cc7531`.
+This is a 100-s free-running mission with a 45-minute automatic shutdown limit.
+Instance launch is confirmed; application startup and live results are pending.
+The exact launch metadata is in `evaluation/runs/live_pipeline_final/smoke100_launch.json`.
+The hardware change further prevents attributing any improvement solely to the
+callback changes; first establish an operating live feedback loop.
+
+
+### 100-s result and next RCA step
+
+Run `20261026T214842Z-gpu-beb510` completed: 175.572 wall seconds, RTF 0.569567,
+5.399/5.251 m recorded GT translation, 145/125 integrated keyframes and 281 GPU
+reconstruction keyframes. The feedback audit still reports median command age
+23.701 simulated seconds, maximum 37.701 within the 100-s mission. Later commands
+were applied after the mission horizon; those are counted separately.
+
+Inspection found two additional integration problems: demo messages still passed
+through a fleet-wide timestamp watermark, and `ARIADNE_PROFILE` was not forwarded
+into the runtime container (whose profile writer also only ran under lockstep).
+The next patch releases demo sensor arrivals immediately, retaining per-topic
+transport order and bounded stereo queues. Evidence mode retains its watermark.
+It adds 10 Hz wall-rate simulator-clock telemetry, estimator receipt age, command
+send age, and live decision-stage profiling. These measurements distinguish input,
+estimation and planning delay from downstream command transport. The watermark is
+a confirmed cross-agent dependency; its share of the measured delay is unproven.
+
+Arrival-order patch validation: C++ runtime and ROS bridge built successfully;
+30 focused tests passed, including the new case where an absent second camera
+cannot hold the first agent's IMU. Existing timestamp-watermark and lockstep tests
+remain enabled. Cloud comparison is pending; no latency reduction is claimed yet.
+
+### Arrival-order regression RCA and correction
+
+The 100-s verification `20261027T023847Z-gpu-366b2a` failed: both workers exhausted
+IMU before processing camera stamps 75.35/78.55 s. Its reported RTF is not a
+successful pipeline benchmark. Failure logs and profiles are retained under
+`evaluation/runs/live_pipeline_final/arrival_failure/`.
+
+The change removed canonical ordering but retained an EOF rule that assumed it:
+the first image or IMU after end_s closed all sensor queues. The bridge's fair
+sender allowed only 32 small control messages per two large image messages.
+Under image drops/slow image writes this also limited IMU delivery, while newer
+images could advance independently. Once an image crossed end_s, delayed IMU was
+cut off. Global ordering had previously concealed that dependency.
+
+Correction: each bridge stereo queue is eligible only through that agent's
+successfully transmitted IMU timestamp. The watermark is per agent, and its queue
+still retains at most two complete pending pairs. Advance occurs after a successful
+socket write, so the downstream receiver obtains the IMU before that pair. Control
+bursts are increased to a bounded 512 messages to avoid rate-limiting small sensor
+messages behind megabyte image payloads. This does not guarantee a throughput rate;
+the bracket invariant holds even under overload.
+
+Demo EOF now tracks left/right camera and IMU crossing separately for every agent.
+Images after the horizon are discarded. The first IMU sample beyond the horizon
+is admitted, providing a bracket for a camera exactly at end_s, before queues close.
+This boundary also applies when replaying demo recordings; lockstep retains the
+original canonical boundary. Per-topic FIFO delivery is assumed. A missing sensor
+must produce explicit watchdog/EOF failure, never a fabricated inertial sample.
+
+Tests cover the failing camera-before-IMU interleaving, bounded queues with an
+independently progressing second agent, a fast camera crossing before lagging IMU,
+and admission of the final IMU bracket before completion.
+
+The failed run did yield usable stage timings: six decisions averaged 4.422 s,
+including 3.853 s in the parallel planning stage and 0.556 s in map integration.
+These local timings identify the next optimization target, but do not establish
+mission performance. Clock-based age summaries require caution: clock messages
+shared the lagging control queue in this failed run, so their freshness was limited.
+
+Correction validation: core runtime and ROS bridge builds passed. The unit suite
+and 30 focused live/lockstep/allocation tests passed, including four new regression
+cases for IMU gating and the end-of-mission boundary. Live verification remains
+required; passing these tests is not a claim that the full pipeline is complete.

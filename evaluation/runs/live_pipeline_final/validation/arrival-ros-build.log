@@ -1,0 +1,12 @@
+[live 02:32:19] sim plugins (mover live mode) -> build/sim-plugins
+[ 28%] Built target ariadne_kinematic_mover
+[ 71%] Built target ariadne_canonical_streams
+[100%] Built target ariadne_gz_recorder
+[live 02:32:22] ros2 packages -> build/ros2/install
+Starting >>> ariadne_bridge
+[Processing: ariadne_bridge]
+Finished <<< ariadne_bridge [30.1s]
+Starting >>> ariadne_sim
+Finished <<< ariadne_sim [0.13s]
+
+Summary: 2 packages finished [30.4s]

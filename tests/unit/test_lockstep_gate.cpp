@@ -63,3 +63,27 @@ TEST(LockstepGate, MinProgressIsTheSlowestUnfinishedLane) {
     EXPECT_EQ(live::MinProgress(Lanes({100, 40, 70}, {1})), 70) << "a done lane never paces";
     EXPECT_EQ(live::MinProgress(Lanes({100, 40, 70}, {0, 1, 2})), std::numeric_limits<int64_t>::max());
 }
+
+TEST(LockstepGate, DemoProgressDoesNotWaitForStalledPeer) {
+    const auto lanes = Lanes({100, 1, 50});
+    EXPECT_TRUE(live::AnyReached(lanes, 100));
+    EXPECT_FALSE(live::AllReached(lanes, 100));
+    EXPECT_FALSE(live::AnyReached(lanes, 101));
+    EXPECT_FALSE(live::AnyReached(std::vector<LaneGate>{}, 100));
+}
+TEST(LockstepGate, CollaborativeDemoIntegratesItsOwnMaps) {
+    EXPECT_TRUE(live::IntegrateAtDecision(true, true));
+    EXPECT_TRUE(live::IntegrateAtDecision(false, true));
+    EXPECT_TRUE(live::IntegrateAtDecision(false, false));
+    EXPECT_FALSE(live::IntegrateAtDecision(true, false));
+}
+
+TEST(LockstepGate, SkippedDemoDecisionDoesNotSkipRadioHeartbeats) {
+    int64_t last = 0; std::vector<int64_t> ticks;
+    for (int64_t horizon : {5, 10, 15, 25})
+        live::AdvanceRadioTicks(last, horizon, 1, [&](int64_t t) { ticks.push_back(t); });
+    ASSERT_EQ(ticks.size(), 25u);
+    for (int i = 0; i < 25; ++i) EXPECT_EQ(ticks[i], i + 1);
+    live::AdvanceRadioTicks(last, 25, 1, [&](int64_t t) { ticks.push_back(t); });
+    EXPECT_EQ(ticks.size(), 25u);
+}

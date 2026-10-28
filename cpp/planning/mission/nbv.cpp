@@ -11,9 +11,11 @@
 #include <opencv2/core/utility.hpp>
 
 #include <algorithm>
+#include <chrono>
 #include <map>
 #include <cmath>
 #include <cstdio>
+#include <exception>
 #include <limits>
 #include <queue>
 #include <stdexcept>
@@ -392,6 +394,12 @@ NbvPlan PlanNbv(const NbvInputs& in, int agent, const AgentState& st, const NbvP
     const GridFrame& g = in.grid;
     const TraversabilityMaps& tm = *in.trav;
     NbvPlan out;
+    auto lap_t = std::chrono::steady_clock::now();
+    const auto lap = [&](const char* stage) {   // the profile's stage split; never read by planning
+        const auto now = std::chrono::steady_clock::now();
+        out.stage_ms.emplace_back(stage, std::chrono::duration<double, std::milli>(now - lap_t).count());
+        lap_t = now;
+    };
 
     // Plan space (D158): trav_a, plus the agent's own escape disc where the slab is not occupied.
     const Cell me = CellOf(g, st.position.x(), st.position.y());
@@ -402,6 +410,7 @@ NbvPlan PlanNbv(const NbvInputs& in, int agent, const AgentState& st, const NbvP
             if (std::hypot(r - me.r, c - me.c) <= esc && tm.slab.at<uint8_t>(r, c) != kOccupied) plan.at<uint8_t>(r, c) = 1;
     const cv::Mat dist = GridDistances(plan, me);
     const cv::Mat bott = Bottleneck(plan, tm.clear_r, me, esc);
+    lap("space");
 
     // lambda schedule (D114): the path-proportional costs counted once.
     const double fe = std::min(1.0, st.e_used_m / p.e_total_m), ft = std::min(1.0, in.t_s / p.mission_T_s);
@@ -437,6 +446,7 @@ NbvPlan PlanNbv(const NbvInputs& in, int agent, const AgentState& st, const NbvP
         if (In(dist_ret, e) && dist_ret.at<double>(e.r, e.c) < d_ret) d_ret = dist_ret.at<double>(e.r, e.c), best_e = int(i);
     }
     const double e_return = p.e_per_m * d_ret * g.cell;
+    lap("return");
     if (best_e < 0) {
         // No entrance over the return space: the flown track itself is now blocked. That is a lost route, not an
         // energy comparison (E_remaining < 1.3 x inf would hold the agent for the rest of the mission): reported as
@@ -535,6 +545,7 @@ NbvPlan PlanNbv(const NbvInputs& in, int agent, const AgentState& st, const NbvP
         }
     }
     const std::unordered_set<int64_t>* envp = env.empty() ? nullptr : &env;
+    lap("targets");
 
     const cv::Mat known = KnownFreePlan(tm, p.rho_a);   // view goals only in known-free agent space (D153b)
     // --- views, raw terms, costs ---------------------------------------------------------------------------------
@@ -574,52 +585,84 @@ NbvPlan PlanNbv(const NbvInputs& in, int agent, const AgentState& st, const NbvP
     out.options.reserve(out.options.size() + n_opt);
     for (auto& s : per_target)
         for (auto& c : s) out.options.push_back(std::move(c));
+    lap("views");
+    out.stage_ms.emplace_back("n_targets", double(targets.size()));
+    out.stage_ms.emplace_back("n_views", double(out.options.size()));
 
     // --- D117 executed-command time, D118 arrival twins (Ariadne policy, behind their keys) -----------------------
     const bool timed = p.cost_time && p.policy == NbvPolicy::kAriadne && in.router;
     out.timed = timed;
     if (timed) {
         const double z = st.position.z();
+        // Each option is independent (its own route search on the read-only plan space, its own command time and
+        // twin raycast): evaluated in parallel into per-option slots, gathered in option order, so kept, twins and
+        // unroutable are exactly the serial loop's. A twin's CommandTime error is rethrown as the serial loop would:
+        // the first one in option order.
+        struct Slot {
+            bool ok = false;
+            bool has_twin = false;
+            TaskCandidate twin;
+            std::exception_ptr err;
+        };
+        std::vector<Slot> slots(out.options.size());
+        cv::parallel_for_(cv::Range(0, int(out.options.size())), [&](const cv::Range& range) {
+          for (int i = range.start; i < range.end; ++i) {
+            TaskCandidate& c = out.options[size_t(i)];
+            Slot& s = slots[size_t(i)];
+            try {
+                const ViewCommand cmd = (*in.router)(c.goal_xy);
+                double t = 0, turn = 0;
+                bool ok = cmd.ok;
+                if (ok) {
+                    try {
+                        t = CommandTime(cmd, st.position.x(), st.position.y(), z, in.heading, true, c.goal_yaw, p.motion,
+                                        tm.clear_a, g, p.rho_a, in.bounds.hi.z(), &turn);
+                    } catch (const std::exception&) {
+                        ok = false;   // PlanCommand refused it (zero clearance): one view never aborts the plan
+                    }
+                }
+                if (!ok) continue;
+                s.ok = true;
+                c.cost[3] = t, c.turn_s = turn;
+                // D118: a view the command reaches by a move is also offered at that move's heading, no final turn.
+                if (p.arrival_twins && !cmd.cut && !cmd.wp.empty() && !std::isnan(cmd.wp.back().first)) {
+                    const auto& b = cmd.wp.back();
+                    const std::pair<double, double> a = cmd.wp.size() > 1 ? cmd.wp[cmd.wp.size() - 2]
+                                                                          : std::make_pair(st.position.x(), st.position.y());
+                    TaskCandidate w = c;
+                    w.goal_yaw = std::atan2(b.second - a.second, b.first - a.first);
+                    w.keep_heading = true;
+                    const IgCounts ig = RaycastIg(map, core::Vec3(c.goal_xy.first, c.goal_xy.second, p.sampler.z),
+                                                  w.goal_yaw, p.frustum, envp, in.bounds, -1, peerp,
+                                                  in.footprints ? &g : nullptr);
+                    w.ig_raw[kCoverage] = ig.coverage, w.ig_raw[kEntropy] = ig.entropy, w.ig_raw[kEgressConfidence] = ig.egress;
+                    w.footprint = ig.footprint;
+                    w.cost[3] = CommandTime(cmd, st.position.x(), st.position.y(), z, in.heading, false, 0.0, p.motion,
+                                            tm.clear_a, g, p.rho_a, in.bounds.hi.z(), &w.turn_s);
+                    s.twin = std::move(w);
+                    s.has_twin = true;
+                }
+            } catch (...) {
+                s.err = std::current_exception();
+            }
+          }
+        });
         std::vector<TaskCandidate> kept, twins;
         kept.reserve(out.options.size());
-        for (auto& c : out.options) {
-            const ViewCommand cmd = (*in.router)(c.goal_xy);
-            double t = 0, turn = 0;
-            bool ok = cmd.ok;
-            if (ok) {
-                try {
-                    t = CommandTime(cmd, st.position.x(), st.position.y(), z, in.heading, true, c.goal_yaw, p.motion,
-                                    tm.clear_a, g, p.rho_a, in.bounds.hi.z(), &turn);
-                } catch (const std::exception&) {
-                    ok = false;   // PlanCommand refused it (zero clearance): one view never aborts the plan
-                }
-            }
-            if (!ok) {
+        for (size_t i = 0; i < slots.size(); ++i) {
+            Slot& s = slots[i];
+            if (s.err) std::rethrow_exception(s.err);
+            if (!s.ok) {
                 ++out.unroutable;
                 continue;
             }
-            c.cost[3] = t, c.turn_s = turn;
-            // D118: a view the command reaches by a move is also offered at that move's heading, with no final turn.
-            if (p.arrival_twins && !cmd.cut && !cmd.wp.empty() && !std::isnan(cmd.wp.back().first)) {
-                const auto& b = cmd.wp.back();
-                const std::pair<double, double> a = cmd.wp.size() > 1 ? cmd.wp[cmd.wp.size() - 2]
-                                                                      : std::make_pair(st.position.x(), st.position.y());
-                TaskCandidate w = c;
-                w.goal_yaw = std::atan2(b.second - a.second, b.first - a.first);
-                w.keep_heading = true;
-                const IgCounts ig = RaycastIg(map, core::Vec3(c.goal_xy.first, c.goal_xy.second, p.sampler.z), w.goal_yaw,
-                                              p.frustum, envp, in.bounds, -1, peerp, in.footprints ? &g : nullptr);
-                w.ig_raw[kCoverage] = ig.coverage, w.ig_raw[kEntropy] = ig.entropy, w.ig_raw[kEgressConfidence] = ig.egress;
-                w.footprint = ig.footprint;
-                w.cost[3] = CommandTime(cmd, st.position.x(), st.position.y(), z, in.heading, false, 0.0, p.motion,
-                                        tm.clear_a, g, p.rho_a, in.bounds.hi.z(), &w.turn_s);
-                twins.push_back(std::move(w));
-            }
-            kept.push_back(std::move(c));
+            if (s.has_twin) twins.push_back(std::move(s.twin));
+            kept.push_back(std::move(out.options[i]));
         }
         for (auto& w : twins) kept.push_back(std::move(w));
         out.options = std::move(kept);
     }
+    lap("timed");
 
     // --- self-normalisation and utility (§21.3/§21.4, D114) ------------------------------------------------------
     std::array<double, 5> scale{};
@@ -666,6 +709,7 @@ NbvPlan PlanNbv(const NbvInputs& in, int agent, const AgentState& st, const NbvP
         return a.task_id < b.task_id;
     });
     if (p.policy == NbvPolicy::kTare && !out.options.empty()) TareSchedule(plan, g, me, p, &out);
+    lap("utility");
     return out;
 }
 

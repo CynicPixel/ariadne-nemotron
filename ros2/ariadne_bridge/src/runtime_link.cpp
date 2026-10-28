@@ -17,6 +17,9 @@
 // clock at the moment of the request (/clock, subscribed here, not forwarded): the time the world was paused at.
 // ---------------------------------------------------------------------------
 #include "runtime/live/link_frame.hpp"
+#include "runtime/live/message_queue.hpp"
+#include <cstdlib>
+#include <condition_variable>
 
 #include <geometry_msgs/msg/pose_array.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
@@ -55,6 +58,16 @@ public:
         const auto skip = declare_parameter<std::vector<std::string>>("skip_topics", std::vector<std::string>{"/clock"});
         const std::set<std::string> skipped(skip.begin(), skip.end());
 
+        const char* latest = std::getenv("ARIADNE_LIVE_LATEST");
+        asynchronous_ = latest && std::string(latest) == "1";
+        control_out_.ConfigureSensor(64ULL * 1024 * 1024);
+        if (asynchronous_) {
+            // Excluded from the component container's executor: image serialization
+            // cannot prevent clock, IMU and supervisory callbacks from running.
+            control_group_ = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive, false);
+            control_executor_ = std::make_unique<rclcpp::executors::SingleThreadedExecutor>();
+            control_executor_->add_callback_group(control_group_, get_node_base_interface());
+        }
         fd_ = live::Connect(socket_path, std::chrono::seconds(120));
         RCLCPP_INFO(get_logger(), "connected to the runtime at %s", socket_path.c_str());
 
@@ -82,25 +95,42 @@ public:
                 throw std::runtime_error("RuntimeLink: unsupported direction " + dir);
             }
         }
+        for (const auto& [agent, queue] : image_out_) imu_topic_[agent + "/imu"] = queue;
         // D167 timers: /clock (bridged but never forwarded) feeds a (sim ns, wall) ring; each forwarded message's
         // bridge latency = wall at forward - wall when /clock first reached its stamp. Aggregates go out in #stats.
+        rclcpp::SubscriptionOptions clock_options;
+        clock_options.callback_group = control_group_;
         clock_sub_ = create_subscription<rosgraph_msgs::msg::Clock>(
             "/clock", rclcpp::QoS(100), [this](const rosgraph_msgs::msg::Clock::SharedPtr m) {
                 const int64_t t = int64_t(m->clock.sec) * 1000000000 + m->clock.nanosec;
                 clock_ns_ = t;
-                std::lock_guard<std::mutex> lk(lat_mu_);
-                clock_ring_.emplace_back(t, std::chrono::steady_clock::now());
-                if (clock_ring_.size() > 8192) clock_ring_.pop_front();
-            });
+                const auto now = std::chrono::steady_clock::now();
+                {
+                    std::lock_guard<std::mutex> lk(lat_mu_);
+                    clock_ring_.emplace_back(t, now);
+                    if (clock_ring_.size() > 8192) clock_ring_.pop_front();
+                }
+                if (asynchronous_ && now - last_clock_sent_ >= std::chrono::milliseconds(100)) {
+                    const std::string js = "{\"sim_ns\":" + std::to_string(t) + "}";
+                    Send("#clock", reinterpret_cast<const uint8_t*>(js.data()), js.size());
+                    last_clock_sent_ = now;
+                }
+            }, clock_options);
+        if (asynchronous_) sender_ = std::thread([this] { SendQueued(); });
         reader_ = std::thread([this] { ReadCommands(); });
-        ready_timer_ = create_wall_timer(std::chrono::milliseconds(200), [this] { CheckReady(); });
-        stats_timer_ = create_wall_timer(std::chrono::seconds(5), [this] { SendStats(); });
+        ready_timer_ = create_wall_timer(std::chrono::milliseconds(200), [this] { CheckReady(); }, control_group_);
+        stats_timer_ = create_wall_timer(std::chrono::seconds(5), [this] { SendStats(); }, control_group_);
+        if (control_executor_) control_thread_ = std::thread([this] { control_executor_->spin(); });
     }
 
     ~RuntimeLink() override {
         stop_ = true;
         if (fd_ >= 0) ::shutdown(fd_, SHUT_RDWR);
+        send_cv_.notify_all();
+        if (control_executor_) control_executor_->cancel();
+        if (control_thread_.joinable()) control_thread_.join();
         if (reader_.joinable()) reader_.join();
+        if (sender_.joinable()) sender_.join();
         if (fd_ >= 0) ::close(fd_);
     }
 
@@ -114,9 +144,14 @@ private:
         // sizes are constant per topic, so after the first message the zeroed buffer is never reallocated; the first
         // one is serialized, zeroed and serialized again. The callback is never re-entered (one callback group).
         auto sm = std::make_shared<rclcpp::SerializedMessage>();
-        // Deep enough that a slow socket write does not overflow the intra-process buffer during a stall;
-        // any loss still shows as a stamp-grid gap in the runtime's per-topic accounting.
-        subs_.push_back(create_subscription<T>(topic, rclcpp::QoS(500).reliable(),
+        constexpr bool image = std::is_same_v<T, sensor_msgs::msg::Image>;
+        rclcpp::SubscriptionOptions options;
+        if (asynchronous_ && !image) options.callback_group = control_group_;
+        // Demo images prioritize freshness at ROS ingress. Pair integrity is enforced
+        // by the subsequent stereo queue. Preserve the original lossless profile.
+        auto qos = rclcpp::QoS(asynchronous_ && image ? 2 : 500).reliable();
+        if (asynchronous_ && image) qos.best_effort();
+        subs_.push_back(create_subscription<T>(topic, qos,
                                                [this, topic, ser, sm](const typename T::SharedPtr m) {
                                                    auto& r = sm->get_rcl_serialized_message();
                                                    const size_t cap = r.buffer_capacity;
@@ -129,11 +164,22 @@ private:
                                                    Send(topic, r.buffer, r.buffer_length);
                                                    const int64_t st = StampNs(*m);
                                                    if (st >= 0) NoteLatency(topic, st);
-                                               }));
+                                               }, options));
         received_[topic] = 0;
     }
 
     void Subscribe(const std::string& topic, const std::string& type) {
+        if (asynchronous_ && type == "sensor_msgs/msg/Image") {
+            const auto side = topic.find("/left/") != std::string::npos ? topic.find("/left/") : topic.find("/right/");
+            if (side == std::string::npos) throw std::runtime_error("demo image topic must name a stereo side");
+            const auto prefix = topic.substr(0, side);
+            auto& queue = image_out_[prefix];
+            if (!queue) {
+                queue = std::make_shared<live::MessageQueue>();
+                queue->ConfigureSensor(64ULL * 1024 * 1024, prefix + "/left/image_raw", prefix + "/right/image_raw", true);
+            }
+            image_topic_[topic] = queue;
+        }
         if (type == "sensor_msgs/msg/Image") SubscribeTyped<sensor_msgs::msg::Image>(topic);
         else if (type == "sensor_msgs/msg/CameraInfo") SubscribeTyped<sensor_msgs::msg::CameraInfo>(topic);
         else if (type == "sensor_msgs/msg/Imu") SubscribeTyped<sensor_msgs::msg::Imu>(topic);
@@ -169,7 +215,64 @@ private:
         ++a.n, a.sum_ms += ms, a.max_ms = std::max(a.max_ms, ms);
     }
 
+    void SendQueued() {
+        while (!stop_) {
+            uint64_t seen;
+            { std::lock_guard<std::mutex> lk(send_mu_); seen = send_generation_; }
+            bool sent = false;
+            // Bound control bursts, then serve each agent once; neither image
+            // traffic nor a continuous IMU stream can starve the other class.
+            for (int i = 0; i < 512 && !stop_; ++i) {
+                auto m = control_out_.TryPop(); if (!m) break;
+                WireSend(*m); sent = true;
+            }
+            for (const auto& [agent, queue] : image_out_) {
+                (void)agent;
+                if (stop_) break;
+                if (auto m = queue->TryPop()) { WireSend(*m); sent = true; }
+            }
+            if (!sent) {
+                std::unique_lock<std::mutex> lk(send_mu_);
+                send_cv_.wait(lk, [&] { return stop_ || send_generation_ != seen; });
+            }
+        }
+    }
+    void WireSend(const live::StreamMessage& m) {
+        const bool ok = live::WriteFrame(fd_, m.topic, m.data->data(), m.data->size());
+        if (ok) {
+            const auto imu = imu_topic_.find(m.topic);
+            if (imu != imu_topic_.end()) imu->second->AdvanceStereoWatermark(m.stamp_ns);
+        }
+        { std::lock_guard<std::mutex> lk(write_mu_);
+          if (m.topic[0] != '#') ++received_[m.topic];
+          if (!ok) ++dropped_[m.topic]; }
+        if (!ok) { lost_peer_ = true; stop_ = true; ::shutdown(fd_, SHUT_RDWR); send_cv_.notify_all(); }
+    }
     void Send(const std::string& topic, const uint8_t* data, size_t n) {
+        if (asynchronous_) {
+            if (stop_) return;
+            live::StreamMessage m;
+            m.topic = topic;
+            m.data = std::make_shared<const std::vector<uint8_t>>(data, data + n);
+            const auto image = image_topic_.find(topic);
+            if (image != image_topic_.end() || imu_topic_.count(topic)) {
+                if (n < 12) throw std::runtime_error("short stereo image header");
+                int32_t sec; uint32_t nsec;
+                std::memcpy(&sec, data + 4, 4); std::memcpy(&nsec, data + 8, 4);
+                m.stamp_ns = int64_t(sec) * 1000000000 + nsec;
+            }
+            try {
+                (image != image_topic_.end() ? *image->second : control_out_).Push(std::move(m));
+            } catch (const std::exception& e) {
+                RCLCPP_FATAL(get_logger(), "bounded sensor sender: %s", e.what());
+                stop_ = true; ::shutdown(fd_, SHUT_RDWR); send_cv_.notify_all();
+                rclcpp::shutdown();
+                return;
+            }
+            { std::lock_guard<std::mutex> lk(send_mu_); ++send_generation_; }
+            send_cv_.notify_one();
+            return;
+        }
         std::lock_guard<std::mutex> lk(write_mu_);
         if (topic[0] != '#') ++received_[topic];
         if (!live::WriteFrame(fd_, topic, data, n)) {
@@ -273,7 +376,15 @@ private:
             js << (first ? "" : ",") << "\"" << t << "\":" << n;
             first = false;
         }
-        js << "}}";
+        js << "},\"sensor_sender\":{\"asynchronous\":" << (asynchronous_ ? "true" : "false") << ",\"agents\":[";
+        bool first_agent = true;
+        for (const auto& [agent, queue] : image_out_) {
+            js << (first_agent ? "" : ",") << "{\"agent\":\"" << agent << "\",\"dropped_pairs\":"
+               << queue->dropped_pairs() << ",\"dropped_incomplete\":" << queue->dropped_incomplete()
+               << ",\"peak_bytes\":" << queue->max_bytes() << "}";
+            first_agent = false;
+        }
+        js << "]}}";
         const std::string s = js.str();
         lk.unlock();
         Send("#stats", reinterpret_cast<const uint8_t*>(s.data()), s.size());
@@ -289,7 +400,15 @@ private:
     std::map<std::string, long> received_, dropped_;   // guarded by write_mu_
     std::vector<rclcpp::SubscriptionBase::SharedPtr> subs_;
     std::map<std::string, rclcpp::Publisher<geometry_msgs::msg::PoseArray>::SharedPtr> cmd_pubs_;
-    std::thread reader_;
+    std::thread reader_, sender_, control_thread_;
+    rclcpp::CallbackGroup::SharedPtr control_group_;
+    std::unique_ptr<rclcpp::executors::SingleThreadedExecutor> control_executor_;
+    bool asynchronous_ = false;
+    live::MessageQueue control_out_;
+    std::map<std::string, std::shared_ptr<live::MessageQueue>> image_out_, image_topic_, imu_topic_;
+    std::mutex send_mu_;
+    std::condition_variable send_cv_;
+    uint64_t send_generation_ = 0;
     rclcpp::Client<ros_gz_interfaces::srv::ControlWorld>::SharedPtr control_;   // lockstep only
     rclcpp::Subscription<rosgraph_msgs::msg::Clock>::SharedPtr clock_sub_;
     struct Lat {
@@ -301,6 +420,7 @@ private:
     std::map<std::string, Lat> lat_;                                                     // guarded by lat_mu_
     long lat_skipped_ = 0;                                                               // guarded by lat_mu_
     std::atomic<int64_t> clock_ns_{-1};
+    std::chrono::steady_clock::time_point last_clock_sent_{};  // control-group-owned
     rclcpp::TimerBase::SharedPtr ready_timer_, stats_timer_;
 };
 

@@ -9,15 +9,22 @@
 
 namespace ariadne::planning {
 
-cv::Mat BodySupport(const TsdfMap& map, const GridFrame& g, const BodyCapsule& body, double band_lo, double band_hi) {
+int BodySupportReach(const BodyCapsule& body, double voxel) { return int(std::ceil(body.rho / voxel)); }
+
+void UpdateSupportCounts(const TsdfMap& map, const GridFrame& g, const BodyCapsule& body, double band_lo,
+                         double band_hi, const cv::Mat& mask, SupportCounts* out) {
     const double vox = map.Voxel();
     if (std::abs(g.cell - vox) > 1e-12) throw std::invalid_argument("BodySupport: grid cell must equal the voxel");
     const int cx0 = int(std::lround(g.ox / vox)), cy0 = int(std::lround(g.oy / vox));
-    const int R = int(std::ceil(body.rho / vox));
-    cv::Mat known_sum = cv::Mat::zeros(g.rows, g.cols, CV_32F);
-    double total = 0;   // voxels in the envelope: the same for every column
+    const int R = BodySupportReach(body, vox);
+    // Per envelope layer: the disc as row spans, w[i + R] = half-width of disc row i (-1 = empty row).
+    struct Layer {
+        int z;
+        std::vector<int> w;
+    };
+    std::vector<Layer> layers;
+    int total = 0;
     const int z0 = int(std::floor((body.axis_lo - body.rho) / vox)), z1 = int(std::floor((body.axis_hi + body.rho) / vox));
-    cv::Mat known(g.rows, g.cols, CV_32F), conv;
     for (int z = z0; z <= z1; ++z) {
         const double zc = (z + 0.5) * vox;
         if (zc < band_lo || zc > band_hi) continue;
@@ -25,25 +32,82 @@ cv::Mat BodySupport(const TsdfMap& map, const GridFrame& g, const BodyCapsule& b
         const double dz = zc < body.axis_lo ? body.axis_lo - zc : (zc > body.axis_hi ? zc - body.axis_hi : 0.0);
         const double r2 = body.rho * body.rho - dz * dz;
         if (r2 < 0) continue;
-        cv::Mat disc = cv::Mat::zeros(2 * R + 1, 2 * R + 1, CV_32F);
+        Layer L{z, std::vector<int>(size_t(2 * R + 1), -1)};
+        int n = 0;
         for (int i = -R; i <= R; ++i)
-            for (int j = -R; j <= R; ++j)
-                if ((i * i + j * j) * vox * vox <= r2 + 1e-12) disc.at<float>(i + R, j + R) = 1.f;
-        const double n = cv::sum(disc)[0];
+            for (int j = 0; j <= R; ++j)   // the disc is symmetric in j and convex along a row
+                if ((i * i + j * j) * vox * vox <= r2 + 1e-12) L.w[size_t(i + R)] = j;
+        for (int x : L.w) n += x >= 0 ? 2 * x + 1 : 0;
         if (n == 0) continue;
-        for (int r = 0; r < g.rows; ++r) {
-            float* k = known.ptr<float>(r);
-            for (int c = 0; c < g.cols; ++c) k[c] = map.State({cx0 + c, cy0 + r, z}) != kUnknown ? 1.f : 0.f;
-        }
-        // A symmetric kernel, so correlation = convolution; outside the grid is unobserved (constant 0).
-        cv::filter2D(known, conv, CV_32F, disc, cv::Point(-1, -1), 0, cv::BORDER_CONSTANT);
-        known_sum += conv;
         total += n;
+        layers.push_back(std::move(L));
     }
-    if (total == 0) return cv::Mat::zeros(g.rows, g.cols, CV_32F);
-    cv::Mat s = known_sum / total;
-    cv::min(cv::max(s, 0.0), 1.0, s);   // filter2D's float rounding can land a hair outside [0, 1]
+    const bool all = mask.empty() || out->Empty();
+    if (all) out->count = cv::Mat::zeros(g.rows, g.cols, CV_32S);
+    out->total = total;
+    // The columns to recount and the box around them that their discs read (outside the grid = unobserved).
+    cv::Rect box(0, 0, g.cols, g.rows);
+    if (!all) {
+        std::vector<cv::Point> nz;
+        cv::findNonZero(mask, nz);
+        if (nz.empty()) return;
+        int x0 = nz[0].x, x1 = x0, y0 = nz[0].y, y1 = y0;
+        for (const auto& q : nz) x0 = std::min(x0, q.x), x1 = std::max(x1, q.x), y0 = std::min(y0, q.y), y1 = std::max(y1, q.y);
+        box = cv::Rect(x0, y0, x1 - x0 + 1, y1 - y0 + 1);
+    }
+    const cv::Rect src = (box + cv::Size(2 * R, 2 * R)) - cv::Point(R, R);   // box dilated by R, may leave the grid
+    const int L = int(layers.size()), W = src.width, H = src.height;
+    // prefix[l][y][x + 1] = known voxels of layer l in src row y, columns [0, x].
+    std::vector<int> prefix(size_t(L) * size_t(H) * size_t(W + 1), 0);
+    cv::parallel_for_(cv::Range(0, H), [&](const cv::Range& rows) {   // const map reads, one source row each
+        for (int y = rows.start; y < rows.end; ++y) {
+            const int r = src.y + y;
+            for (int l = 0; l < L; ++l) {
+                int* p = &prefix[(size_t(l) * size_t(H) + size_t(y)) * size_t(W + 1)];
+                for (int x = 0; x < W; ++x) {
+                    const int c = src.x + x;
+                    const bool in = r >= 0 && r < g.rows && c >= 0 && c < g.cols;
+                    p[x + 1] = p[x] + (in && map.State({cx0 + c, cy0 + r, layers[size_t(l)].z}) != kUnknown ? 1 : 0);
+                }
+            }
+        }
+    });
+    cv::parallel_for_(cv::Range(box.y, box.y + box.height), [&](const cv::Range& rows) {   // one output row each
+        for (int r = rows.start; r < rows.end; ++r) {
+            int* cnt = out->count.ptr<int>(r);
+            const uint8_t* m = all ? nullptr : mask.ptr<uint8_t>(r);
+            for (int c = box.x; c < box.x + box.width; ++c) {
+                if (m && !m[c]) continue;
+                int s = 0;
+                for (int l = 0; l < L; ++l)
+                    for (int i = -R; i <= R; ++i) {
+                        const int w = layers[size_t(l)].w[size_t(i + R)];
+                        if (w < 0) continue;
+                        const int y = r + i - src.y, x = c - src.x;   // src row of disc row i; this column in src
+                        const int* p = &prefix[(size_t(l) * size_t(H) + size_t(y)) * size_t(W + 1)];
+                        s += p[x + w + 1] - p[x - w];
+                    }
+                cnt[c] = s;
+            }
+        }
+    });
+}
+
+cv::Mat SupportFromCounts(const SupportCounts& c) {
+    cv::Mat s = cv::Mat::zeros(c.count.size(), CV_32F);
+    if (c.total == 0) return s;
+    for (int r = 0; r < s.rows; ++r) {   // one division per column: a fully observed envelope is exactly 1
+        const int* n = c.count.ptr<int>(r);
+        float* o = s.ptr<float>(r);
+        for (int k = 0; k < s.cols; ++k) o[k] = float(double(n[k]) / double(c.total));
+    }
     return s;
+}
+
+cv::Mat BodySupport(const TsdfMap& map, const GridFrame& g, const BodyCapsule& body, double band_lo, double band_hi) {
+    SupportCounts c;
+    UpdateSupportCounts(map, g, body, band_lo, band_hi, cv::Mat(), &c);
+    return SupportFromCounts(c);
 }
 
 cv::Mat EgressPenalty(const cv::Mat& clear_r, const cv::Mat& support, const cv::Mat& risk, const EgressWeights& w) {

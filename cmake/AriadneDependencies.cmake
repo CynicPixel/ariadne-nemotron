@@ -86,6 +86,25 @@ target_include_directories(ariadne_mcap SYSTEM INTERFACE ${mcap_SOURCE_DIR}/cpp/
 target_compile_definitions(ariadne_mcap INTERFACE MCAP_COMPRESSION_NO_LZ4)
 target_link_libraries(ariadne_mcap INTERFACE libzstd_static)
 
+# ONNX Runtime (opt-in, ARIADNE_WITH_ORT): the GPU path for ALIKED + LightGlue + EigenPlaces in live GPU runs.
+# OpenCV 5.0.0's cv::dnn cannot take them there: ENGINE_NEW is CPU-only (dnn.hpp) and ENGINE_CLASSIC cannot import
+# the ALIKED/LightGlue graphs (SMOKE §4s). cv::dnn stays the default and the evidence path; the runtime records
+# which backend ran. The official prebuilt release (CUDA 12 + cuDNN 9 build; its CPU provider also runs without a
+# GPU, which the equality tests use). Pinned by version and sha256 (the release asset digest).
+option(ARIADNE_WITH_ORT "ONNX Runtime backend for the hard-pair matcher and place recognizer" OFF)
+if(ARIADNE_WITH_ORT)
+  FetchContent_Declare(onnxruntime
+    URL      https://github.com/microsoft/onnxruntime/releases/download/v1.31.0/onnxruntime-linux-x64-gpu_cuda12-1.31.0.tgz
+    URL_HASH SHA256=62d3af5269af2143b5d37494337573f1ffb8885f3ad7477ae0cb1cc79c8dedfd)
+  FetchContent_MakeAvailable(onnxruntime)
+  add_library(ariadne_onnxruntime SHARED IMPORTED GLOBAL)
+  set_target_properties(ariadne_onnxruntime PROPERTIES
+    IMPORTED_LOCATION ${onnxruntime_SOURCE_DIR}/lib/libonnxruntime.so
+    INTERFACE_INCLUDE_DIRECTORIES ${onnxruntime_SOURCE_DIR}/include
+    INTERFACE_COMPILE_DEFINITIONS ARIADNE_HAVE_ORT=1)
+  set(ARIADNE_ORT_LIB_DIR ${onnxruntime_SOURCE_DIR}/lib CACHE INTERNAL "ONNX Runtime shared libraries (ship with the binary)")
+endif()
+
 if(ARIADNE_BUILD_TESTS)
   FetchContent_Declare(googletest
     GIT_REPOSITORY https://github.com/google/googletest.git

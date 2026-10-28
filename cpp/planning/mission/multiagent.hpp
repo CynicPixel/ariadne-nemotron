@@ -87,6 +87,12 @@ struct ComponentInfo {             // CommsNode's ComponentOf(agent): local API,
     uint32_t epoch = 0;
 };
 
+// Allocation identity is stable across pose-graph solves. The existing wire epoch
+// field carries this topology token; full broker/member equality is also checked
+// before consuming consensus (the 32-bit token alone is not an identity proof).
+uint32_t CoordinationToken(int32_t broker, std::vector<int32_t> members);
+bool MatchesComponent(const TaskConsensus& consensus, const ComponentInfo& component);
+
 struct PeerPose {                  // from HEARTBEAT / #ckf, in G: local API
     int32_t agent = 0;
     int64_t kf_id = 0;

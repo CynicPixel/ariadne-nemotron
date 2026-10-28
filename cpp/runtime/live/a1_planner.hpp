@@ -9,7 +9,7 @@
 //              allocation event, the reserve rule, which policy).
 //   Route      Phase4Planner::Route on the plan of this replan (kept here: Route follows Plan within one barrier).
 // `linked` is always true: the live runtime has no comms link state (the 3.3 comms node is not wired into L1); the
-// trace says so. `flown_m` is the ground-truth path length up to T (the rig's executed motion), computed by the
+// trace says so. `flown_m` is the estimated odometry path length up to T (the rig's executed motion), computed by the
 // runtime and named in the trace.
 // ---------------------------------------------------------------------------
 #include "planning/mission/phase4_planner.hpp"
@@ -147,7 +147,7 @@ public:
                fm.precision(10);
                for (size_t q = 0; q < ctx.flown_m.size(); ++q) fm << (q ? "," : "") << ctx.flown_m[q];
                return fm.str();
-           }() << "],\"flown_source\":\"gt path "
+           }() << "],\"flown_source\":\"estimated odometry path "
            << "length to T\",\"allocation\":{\"method\":\"" << al.method << "\",\"trigger\":\"" << al.trigger << "\",\"tasks\":"
            << al.tasks << ",\"rounds\":" << al.rounds << ",\"messages\":" << al.messages << ",\"bytes\":" << al.bytes
            << ",\"total\":" << al.total << ",\"optimum\":" << al.optimum << "},\"egress\":{\"confidence\":"

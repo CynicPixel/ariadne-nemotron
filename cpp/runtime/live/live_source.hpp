@@ -23,6 +23,7 @@
 //                     floating-point reductions. Turn-taking removes the contention whatever the cause.
 // ---------------------------------------------------------------------------
 #include "core/determinism/digests.hpp"
+#include "runtime/live/message_queue.hpp"
 #include "runtime/datasets/stereo_source.hpp"
 
 #include <mcap/writer.hpp>
@@ -44,13 +45,6 @@
 #include <vector>
 
 namespace ariadne::runtime::live {
-
-struct StreamMessage {
-    std::string topic, type;
-    int64_t stamp_ns = -1;   // header stamp; -1 = untimed (no header: std_msgs/String)
-    std::shared_ptr<const std::vector<uint8_t>> data;
-    uint64_t seq = 0;        // release order (1-based), = log time in the recording
-};
 
 /// The header stamp of a CDR message that starts with std_msgs/Header (Image, CameraInfo, Imu, PoseStamped):
 /// bytes 4..12 after the encapsulation header. -1 for untimed types.
@@ -79,61 +73,22 @@ inline int64_t PeekStamp(const std::string& type, const std::vector<uint8_t>& b)
     return int64_t(sec) * 1000000000 + nsec;
 }
 
-class MessageQueue {
-public:
-    /// capacity 0 = unbounded. Bounded: Push blocks while full (backpressure; order is unchanged, only pacing). The
-    /// replay reader outruns the estimators (~0.85 s per keyframe), and an unbounded queue held a whole recording's
-    /// decoded RGB: a 45 s replay was OOM-killed at 7.4 GB RSS (2026-10-23).
-    explicit MessageQueue(size_t capacity = 0) : cap_(capacity) {}
-    void Push(StreamMessage m) {
-        {
-            std::unique_lock<std::mutex> lk(mu_);
-            if (cap_) space_.wait(lk, [&] { return q_.size() < cap_ || closed_; });
-            q_.push_back(std::move(m));
-            max_depth_ = std::max(max_depth_, q_.size());
-        }
-        cv_.notify_one();
-    }
-    /// Blocks; nullopt once closed and drained.
-    std::optional<StreamMessage> Pop() {
-        std::unique_lock<std::mutex> lk(mu_);
-        cv_.wait(lk, [&] { return !q_.empty() || closed_; });
-        if (q_.empty()) return std::nullopt;
-        StreamMessage m = std::move(q_.front());
-        q_.pop_front();
-        lk.unlock();
-        space_.notify_one();
-        return m;
-    }
-    void Close() {
-        {
-            std::lock_guard<std::mutex> lk(mu_);
-            closed_ = true;
-        }
-        cv_.notify_all();
-        space_.notify_all();
-    }
-    size_t max_depth() const {
-        std::lock_guard<std::mutex> lk(mu_);
-        return max_depth_;
-    }
-
-private:
-    size_t cap_ = 0, max_depth_ = 0;
-    mutable std::mutex mu_;
-    std::condition_variable cv_, space_;
-    std::deque<StreamMessage> q_;
-    bool closed_ = false;
-};
-
 class Reorderer {
 public:
-    explicit Reorderer(std::set<std::string> timed_topics, std::chrono::milliseconds hold_back = std::chrono::seconds(3))
-        : timed_(std::move(timed_topics)), hold_back_(hold_back) {}
+    explicit Reorderer(std::set<std::string> timed_topics, std::chrono::milliseconds hold_back = std::chrono::seconds(3),
+                       bool arrival_order = false)
+        : timed_(std::move(timed_topics)), hold_back_(hold_back), arrival_order_(arrival_order) {}
 
     /// Push one arrival; calls release(m) for every message now safe to release, in release order.
     template <typename F>
     void Push(StreamMessage m, F&& release) {
+        if (arrival_order_) {
+            // Demo sensors have independent consumers: a slow camera must not
+            // hold every agent's IMU behind a fleet-wide timestamp watermark.
+            Count(m.stamp_ns);
+            release(std::move(m));
+            return;
+        }
         const auto now = std::chrono::steady_clock::now();
         if (m.stamp_ns < 0) {   // untimed: released at once, in arrival order
             release(std::move(m));
@@ -209,6 +164,7 @@ private:
     };
     std::set<std::string> timed_;
     std::chrono::milliseconds hold_back_;
+    bool arrival_order_ = false;
     std::map<std::string, Latest> latest_;
     std::map<std::tuple<int64_t, std::string, uint64_t>, StreamMessage> held_;
     uint64_t arrival_ = 0;
@@ -394,7 +350,8 @@ public:
         while (imu_.empty() || imu_.back().t_ns < t_ns) {
             if (!ReadOneImu()) {
                 if (imu_.empty() || imu_.back().t_ns < t_ns)
-                    throw std::runtime_error("live: IMU stream ended before frame timestamp " + std::to_string(t_ns));
+                    throw std::runtime_error("live: IMU stream ended before frame timestamp " + std::to_string(t_ns) +
+                                             "; last IMU=" + std::to_string(imu_.empty() ? -1 : imu_.back().t_ns));
                 break;
             }
         }

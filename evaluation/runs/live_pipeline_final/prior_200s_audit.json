@@ -1,0 +1,146 @@
+{
+  "scope": "decision-trace diagnostics; no ground-truth coverage or completion inference",
+  "agents": {
+    "0": {
+      "decisions": 40,
+      "last_sim_s": 200,
+      "commands": {
+        "goto": 37,
+        "follow": 3
+      },
+      "empty_candidate_decisions": 0,
+      "goal_switches_over_0_5m": 23,
+      "most_repeated_rounded_goals": [
+        {
+          "xy_m": [
+            3.8,
+            4.2
+          ],
+          "decisions": 4
+        },
+        {
+          "xy_m": [
+            2.8,
+            8.8
+          ],
+          "decisions": 3
+        },
+        {
+          "xy_m": [
+            6.3,
+            9.1
+          ],
+          "decisions": 2
+        },
+        {
+          "xy_m": [
+            -1.0,
+            3.1
+          ],
+          "decisions": 1
+        },
+        {
+          "xy_m": [
+            0.8,
+            3.1
+          ],
+          "decisions": 1
+        }
+      ],
+      "allocation_reasons": {
+        "uncoordinated: no consensus received": 1,
+        "uncoordinated: consensus from another epoch": 11,
+        "uncoordinated: no assignment for this agent": 8,
+        "coordinated": 20
+      },
+      "any_egress_found": false,
+      "final_map_counters": {
+        "free_cells": 36312,
+        "occupied_cells": 8330,
+        "unknown_cells": 103662,
+        "keyframes_integrated": [
+          335,
+          341
+        ]
+      },
+      "final_communication_bytes": {
+        "patch": 87517,
+        "bid": 44640,
+        "consensus": 9416,
+        "heartbeat": 617368
+      }
+    },
+    "1": {
+      "decisions": 40,
+      "last_sim_s": 200,
+      "commands": {
+        "goto": 33,
+        "turn": 2,
+        "follow": 5
+      },
+      "empty_candidate_decisions": 0,
+      "goal_switches_over_0_5m": 12,
+      "most_repeated_rounded_goals": [
+        {
+          "xy_m": [
+            3.5,
+            13.5
+          ],
+          "decisions": 5
+        },
+        {
+          "xy_m": [
+            9.1,
+            14.1
+          ],
+          "decisions": 3
+        },
+        {
+          "xy_m": [
+            1.4,
+            15.3
+          ],
+          "decisions": 2
+        },
+        {
+          "xy_m": [
+            1.8,
+            15.2
+          ],
+          "decisions": 2
+        },
+        {
+          "xy_m": [
+            2.1,
+            15.5
+          ],
+          "decisions": 2
+        }
+      ],
+      "allocation_reasons": {
+        "uncoordinated: no consensus received": 1,
+        "uncoordinated: consensus from another epoch": 19,
+        "uncoordinated: no assignment for this agent": 2,
+        "coordinated": 18
+      },
+      "any_egress_found": false,
+      "final_map_counters": {
+        "free_cells": 36312,
+        "occupied_cells": 8330,
+        "unknown_cells": 103662,
+        "keyframes_integrated": [
+          335,
+          341
+        ]
+      },
+      "final_communication_bytes": {
+        "patch": 87517,
+        "bid": 44640,
+        "consensus": 9416,
+        "heartbeat": 617368
+      }
+    }
+  },
+  "source": "/data/code/Ariadne-e2e-final/build/runs/20261026T001000Z-gpu-5bebcd/output/results/run.tar.gz",
+  "sha256": "3c2e72e4d477e1db1981a3a6b4fe045fc334bf4556e9ddc9c6efdbdadeed2f2f"
+}
