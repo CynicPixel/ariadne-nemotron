@@ -1,0 +1,22 @@
+{
+ "nvidia/Nemotron-3_5-Lightning": {
+  "requests": 10,
+  "answered": 10,
+  "agent_decisions": 20,
+  "valid": 20,
+  "holds": 0,
+  "out_of_set": 0,
+  "gate_rejected": 0,
+  "same_cluster": 0,
+  "latency_p50_s": 4.264,
+  "latency_p95_s": 6.683,
+  "calls_mean": 2.8,
+  "input_tokens_mean": 60534.5,
+  "output_tokens_mean": 438.3,
+  "reasoning_tokens_total": 0,
+  "est_usd_total": 0.037373,
+  "errors": 0,
+  "ref_agree_classical": 15,
+  "ref_agree_recorded_bedrock": 16
+ }
+}
