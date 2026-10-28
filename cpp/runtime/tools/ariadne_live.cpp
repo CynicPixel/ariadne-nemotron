@@ -2424,7 +2424,13 @@ int main(int argc, char** argv) {
                 std::ostringstream q;
                 q.precision(10);
                 q << "{\"decision_id\":\"" << did << "\",\"t_s\":" << ts << ",\"map_png\":\"" << map_png.string()
-                  << "\",\"egress\":{\"found\":" << (maps.egress.found ? "true" : "false") << ",\"length_m\":"
+                  // Fork D314: this replan's raw operator slab (snapshots/slab_<ms>.png, written above from the same
+                  // maps.slab: 0 unknown / 1 free / 2 occupied, row = y north, unflipped) for the hypothesis verifier.
+                  << "\",\"slab\":{\"path\":\"" << fs::absolute(run_dir / snap).string() << "\",\"t_s\":" << ts
+                  << ",\"res_m\":" << brief.gs.cell << ",\"origin_xy_m\":" << Xy(brief.gs.origin_x, brief.gs.origin_y)
+                  << ",\"rows\":" << maps.slab.rows << ",\"cols\":" << maps.slab.cols << ",\"grid_nx_ny\":["
+                  << brief.gs.nx << "," << brief.gs.ny << "]}"
+                  << ",\"egress\":{\"found\":" << (maps.egress.found ? "true" : "false") << ",\"length_m\":"
                   << maps.egress.length_cells * brief.gs.cell << ",\"exit\":" << maps.egress.goal_index
                   << ",\"clearance_m\":" << rho_r << "},\"autonomous_threshold\":" << lc.autonomous_threshold
                   << ",\"approvals_dir\":\"" << fs::absolute(run_dir / "approvals").string() << "\",\"directives\":[";

@@ -39,6 +39,16 @@ decision:
       temperature: 0.0
       extra_body: {chat_template_kwargs: {enable_thinking: false}}   # [VERIFIED F1 probe]: 0 reasoning tokens
 
+# The bench's decision-tier candidates (D318), each with its verified reasoning-off flag. Nano: reasoning_effort none
+# does NOT stop reasoning (F1 probe: the tool call landed inside `reasoning`, no tool_calls); enable_thinking false does.
+bench_models:
+  - {provider: nebius, model: nvidia/nemotron-3-super-120b-a12b, images: false, max_tokens: 512, temperature: 0.0,
+     extra_body: {chat_template_kwargs: {enable_thinking: false}}}
+  - {provider: nebius, model: nvidia/Nemotron-3_5-Lightning, images: false, max_tokens: 512, temperature: 0.0,
+     extra_body: {chat_template_kwargs: {enable_thinking: false}}}
+  - {provider: nebius, model: nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B, images: false, max_tokens: 512, temperature: 0.0,
+     extra_body: {chat_template_kwargs: {enable_thinking: false}}}   # [VERIFIED F1 probe]; reasoning_tokens unreported
+
 # Hypothesis tier (F2): Super-VL over the map and keyframes, async. May reason, capped at 2k output tokens (FM).
 hypothesis:
   enabled: true                      # deterministic seeding + the slab verifier (D315, D316); no model call

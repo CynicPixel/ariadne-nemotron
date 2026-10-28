@@ -185,7 +185,7 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--corpus", required=True, type=Path)
     ap.add_argument("--llm-config", default=None)
-    ap.add_argument("--models", default="", help="comma-separated model IDs from the config (default: the decision chain)")
+    ap.add_argument("--models", default="", help="comma-separated model IDs from the config (default: bench_models, else the decision chain)")
     ap.add_argument("--n", type=int, default=10, help="requests per model (small by default: D312)")
     ap.add_argument("--max-calls", type=int, default=0)
     ap.add_argument("--est-in", type=int, default=EST_IN, help="estimated prompt tokens per request")
@@ -196,11 +196,13 @@ def main() -> None:
     args = ap.parse_args()
 
     cfg = load_config(args.llm_config)
-    chain = cfg["decision"]["chain"]
-    specs = {s["model"]: s for s in chain}
+    known = {s["model"]: s for s in cfg["decision"]["chain"] + (cfg.get("bench_models") or [])}
+    specs = {s["model"]: known[s["model"]] for s in (cfg.get("bench_models") or cfg["decision"]["chain"])}
     if args.models:
-        base = chain[0]
-        specs = {m: {**base, **specs.get(m, {}), "model": m} for m in args.models.split(",")}
+        missing = [m for m in args.models.split(",") if m not in known]
+        if missing:
+            sys.exit(f"bench: {missing} not in the config's decision.chain or bench_models (each needs its own flags)")
+        specs = {m: known[m] for m in args.models.split(",")}
     if any("Ultra" in m for m in specs) and not args.allow_ultra:
         sys.exit("bench: the Ultra model needs FM's approval (--allow-ultra)")
     reqs = requests_of(args.corpus, args.n)

@@ -50,6 +50,14 @@ SYSTEM = (
     "the planner's own utility (information gain net of costs; `rank` 0 = best): prefer the top-ranked ones, and do "
     "not pick a goal under 1 m away unless nothing else serves the mission. Keep each reason to one sentence.")
 
+EVIDENCE = (   # fork D315-D317: appended to SYSTEM when the hypothesis layer is on
+    " Hypotheses: list_hypotheses gives claims of the form 'this frontier opens onto a passage a responder can use', "
+    "anchored to this replan's candidates, each with a status set by a deterministic verifier from the observed map "
+    "(unresolved, supported, confirmed, refuted). Statuses are facts about what was observed; your own beliefs are "
+    "not evidence. Prefer moves that resolve an open (unresolved or supported) hypothesis that could give the "
+    "responder an egress route, avoid refuted ones, and when a move tests a hypothesis pass its hypothesis_id and a "
+    "one-sentence evidence_goal (what the agent should observe) in assign.")
+
 
 def mcp_params(ddir: Path, text_only: bool) -> StdioServerParameters:
     """The MCP server as a stdio subprocess. mcp's stdio client passes only HOME/LOGNAME/PATH/SHELL/TERM/USER to it
@@ -87,8 +95,8 @@ async def decide(req: dict, ch: Chooser) -> dict:
         prov = ch.providers[spec["provider"]]
         kind = ch.kind(spec)
         try:
-            await prov.run_turn(req, ddir, ch.mcps[kind], ch.cfgs[(spec["provider"], kind)], spec, SYSTEM,
-                                ch.max_calls, log)
+            await prov.run_turn(req, ddir, ch.mcps[kind], ch.cfgs[(spec["provider"], kind)], spec,
+                                SYSTEM + (EVIDENCE if ch.hyp is not None else ""), ch.max_calls, log)
             break   # answered (with or without assign): a bad answer is not a transport failure, no fallback
         except BudgetExceeded as e:
             log["errors"].append("budget_exceeded")
@@ -102,8 +110,13 @@ async def decide(req: dict, ch: Chooser) -> dict:
             break
     log["latency_s"] = round(time.time() - t0, 3)
     choice = ddir / f"{did}.choice.json"
-    return {"decision_id": did, "assignments": json.loads(choice.read_text())["assignments"] if choice.exists() else None,
-            "orchestrator": log}
+    assignments = json.loads(choice.read_text())["assignments"] if choice.exists() else None
+    if ch.hyp is not None and assignments:
+        try:
+            ch.hyp.after_turn(req, assignments)
+        except Exception as e:  # noqa: BLE001
+            log["errors"].append(f"hypotheses: {type(e).__name__}: {str(e)[:200]}")
+    return {"decision_id": did, "assignments": assignments, "orchestrator": log}
 
 
 LINE_LIMIT = 1 << 24   # bytes per request/answer line; the request grows with the map (16 MiB >> any map seen)
