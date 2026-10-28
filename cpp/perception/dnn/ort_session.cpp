@@ -21,6 +21,10 @@ struct OrtNet::Impl {
 OrtNet::OrtNet(const std::string& onnx, const std::string& provider, int cpu_threads, int device)
     : impl_(std::make_unique<Impl>()) {
     if (provider != "cuda" && provider != "cpu") throw std::invalid_argument("OrtNet: provider cuda|cpu");
+    // The environment first: appending the CUDA provider logs through the default logger, which the first Ort::Env
+    // registers. Built inside the Session(Env(), ..., Options(true)) call the order was unspecified, and GCC built the
+    // options first: g4dn run 7b34cf fell back to CPU on "Attempt to use DefaultLogger but none has been registered".
+    Ort::Env& env = Env();
     auto Options = [&](bool cuda) {
         Ort::SessionOptions so;
         so.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
@@ -35,7 +39,7 @@ OrtNet::OrtNet(const std::string& onnx, const std::string& provider, int cpu_thr
     };
     if (provider == "cuda") {
         try {
-            impl_->session = Ort::Session(Env(), onnx.c_str(), Options(true));
+            impl_->session = Ort::Session(env, onnx.c_str(), Options(true));
             provider_ = "cuda";
             return;
         } catch (const Ort::Exception& e) {
@@ -44,7 +48,7 @@ OrtNet::OrtNet(const std::string& onnx, const std::string& provider, int cpu_thr
     } else {
         provider_ = "cpu";
     }
-    impl_->session = Ort::Session(Env(), onnx.c_str(), Options(false));
+    impl_->session = Ort::Session(env, onnx.c_str(), Options(false));
 }
 
 OrtNet::~OrtNet() = default;
