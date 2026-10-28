@@ -39,7 +39,7 @@ Stage what the `live_aws.sh` payload reads:
 |---|---|---|
 | `ARIADNE_RT_GPU` | `1` | gives the runtime container the GPU (core-gpu image = core-dev + CUDA 12.8 runtime + cuDNN 9, built on the instance from `infra/docker/core-gpu.Dockerfile`) |
 | `ARIADNE_LIVE_CONFIG` | `configs/mission/live_demo_final_profile_1500_ortcuda.yaml`, or the fork's Nemotron variant of it | `collab.dnn_backend ort_cuda` |
-| `ARIADNE_RT_MEM` | **`10g`** | smoke run 7b34cf was OOM-killed (137) at 6g ~2 min into the mission: rt went 2.8 → 4.9 GB with collab workers inside the rt cgroup; the box has ~15 GB free |
+| `ARIADNE_RT_MEM` | **`10g`** | smoke run 7b34cf was OOM-killed (137) at 6g ~2 min into the mission, on the CPU fallback (rt went 2.8 → 4.9 GB with collab workers inside the rt cgroup). Rerun 046ee9 with ORT CUDA peaked at 3.9 GiB, so 10g is ample |
 | `ARIADNE_ROOT_GB` | `150` | the 75 GB root fills with four images + the recon zst + the payload |
 | `ARIADNE_RECON_BACKEND` | `cpu_init` (under the console) | with `gpu` the console serves chunks from `<run>/trained` and the live pane 404s |
 | `ARIADNE_LLM_PROVIDER` | `nebius` (fork) | skips the AWS credential export in `start_orchestrator`; the key comes via `--env-file` at run time |
@@ -51,6 +51,20 @@ Stage what the `live_aws.sh` payload reads:
 - **check:** trace decisions show `source: llm` with `orchestrator.provider = nebius-token-factory` and the Token Factory model ID.
 - **check:** no 137 exit. Record peak rt memory from the samplers.
 - **check:** `hypotheses.jsonl` and `verifier.jsonl` exist, and at least one status change appears in the take.
+- **Known exit bug (open upstream, 2026-10-28):** after the mission ends and `results.yaml` is written, `ariadne_live` can die at
+  process exit with glibc "corrupted double-linked list" (exit 139), and `live.sh` then marks the run FAILED. Until M's fix is
+  merged, judge a take by its artifacts (`results.yaml`, `trace.jsonl`, the jsonl logs, the recording), not by the rt exit code.
+
+## 3a. Expected performance on g4dn.xlarge (M's rerun 046ee9, `3dad564`, classical chooser, 100 s)
+
+- **ORT CUDA:** all 6 ALIKED/LightGlue sessions (parent + 2 workers) run via `onnxruntime_cuda`. Worker `ms_aliked` is 7.7–9.6 s for the whole run (CPU: ~167 s in a7f27b).
+- **RTF: 0.42 end to end**, including startup. 4 vCPU is CPU-starved.
+  - 38/43 frames per agent; track_mean 3.3–3.6 s.
+  - 13 replans; 22 commands sent, 4 expired.
+  - Command age p50 9.9 s (max 13.6 s); plan_fork mean 10.2 s (max 42 s).
+- **Largest remaining CPU consumer:** EigenPlaces on cv::dnn CPU in each collab worker (`ms_place` 136–144 s per worker).
+- **Implication for the take:** the console plays at sim time. At RTF below 1, any sped-up footage must be labelled with its factor
+  on screen. The Nemotron decision latency adds to the command age above.
 
 ## 4. Relaunch etiquette
 

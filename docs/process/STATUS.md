@@ -1,5 +1,17 @@
 # Status (newest first; times IST)
 
+## 2026-10-28 10:15 — GPU rerun figures from upstream M (FM)
+
+- **M's g4dn.xlarge rerun 046ee9** (`3dad564`, classical chooser, 100 s, RT_MEM=10g):
+  - ORT CUDA confirmed in all 6 sessions.
+  - Peak rt memory 3.9 GiB.
+  - **RTF 0.42 end to end; the box is CPU-bound.**
+  - The biggest CPU consumer is EigenPlaces on cv::dnn CPU, at 136–144 s per worker.
+- **Open upstream bug:** exit 139 ("corrupted double-linked list") at `ariadne_live` exit, after `results.yaml` is written. Artifacts are complete,
+  but `live.sh` reports FAILED. The runbook now says to judge takes by artifacts until the fix is merged.
+- **F5 risk:** the plan's "RTF 1" recording is not reachable on g4dn.xlarge today. Options are with the user (labelled speed-up,
+  or an upstream EigenPlaces GPU path before S2). Still blocked: F0.5 (no Nebius key at 10:11).
+
 ## 2026-10-28 09:20 — F0.4 bootstrap done; S0.1 sync (FM)
 
 - **Bootstrap: 7.5 min wall** (copying caches 83 s, runtime build + `ctest -R 'LiveLink|Egress'` 17/17 at 415 s, `live.sh build` 40 s,
