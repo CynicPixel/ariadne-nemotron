@@ -23,6 +23,19 @@ from pathlib import Path
 from .evidence_report import answer_of, jl, locate, report
 
 
+CAVEATS = """
+
+Caveats:
+- Descriptive only: few runs, one scene (maze_short_6, repeats differ by free-running timing and model sampling); no
+  significance claims.
+- Primary metrics are in SIM time (t_s, map cells, distance flown). Every run is on a CPU-only Mesa dev box at
+  ~0.12-0.13 real-time factor; wall-clock LLM latencies come from that box under load and are not deployment figures.
+- "confirmed" / "refuted" mean confirmed / refuted on the map at that time (the deterministic slab verifier at 0.40 m
+  responder clearance); later map revisions can contradict a settled status, and the trace records when they do
+  (`contradiction` events, `contradicted` in the hypothesis view).
+- Unsafe proposals rejected by the C++ gate are counted apart from unsafe actions executed (invariant 6); a missing
+  answer (no assignment, timeout) is neither.
+"""
 NO_ANSWER = ("no assignment recorded", "timeout", "malformed answer", "chooser link down", "pending", "expired",
              "first horizon")
 
@@ -112,7 +125,7 @@ def markdown(rows: list[dict]) -> str:
                    f"in {sum(r['egress_found_t_s'] is not None for r in rs)}/{len(rs)}; proposals rejected by the gate "
                    f"{sum(sum(r['proposals_rejected_by_gate'].values()) for r in rs)}; unsafe actions executed "
                    f"{sum(r['unsafe_actions_executed'] for r in rs)} (above threshold, no approval on record)")
-    return "\n".join(lines + agg) + "\n\nDescriptive only: few runs, one scene; no significance claims.\n"
+    return "\n".join(lines + agg) + CAVEATS
 
 
 def main() -> None:
