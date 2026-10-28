@@ -1,0 +1,150 @@
+{
+ "base_url": "https://api.tokenfactory.nebius.com/v1",
+ "image": "evaluation/runs/gates/phase1_thin_e2e/exit_gate/aadffb8df5790ca0-20261016T052930Z/mission/aadffb8df5790ca0-20261016T060500Z/slab.png",
+ "calls": [
+  {
+   "case": "vl_image_tool",
+   "model": "nvidia/Nemotron-3.5-Super-VL",
+   "http": 200,
+   "latency_s": 1.061,
+   "request_extra_keys": [
+    "reasoning_effort"
+   ],
+   "response": {
+    "id": "chatcmpl-842a95a935085f6f",
+    "choices": [
+     {
+      "finish_reason": "tool_calls",
+      "index": 0,
+      "logprobs": null,
+      "message": {
+       "content": null,
+       "refusal": null,
+       "role": "assistant",
+       "annotations": null,
+       "audio": null,
+       "function_call": null,
+       "tool_calls": [
+        {
+         "id": "chatcmpl-tool-803145d65118f15a",
+         "function": {
+          "arguments": "{\"agent\": \"a0\", \"candidate_index\": 0, \"reason\": \"The left-edge frontier is closer to agent a0's current position, reducing travel time and enabling faster exploration.\"}",
+          "name": "assign"
+         },
+         "type": "function"
+        }
+       ],
+       "reasoning_content": null
+      },
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+     }
+    ],
+    "created": 1793221193,
+    "model": "nvidia/Nemotron-3.5-Super-VL",
+    "object": "chat.completion",
+    "moderation": null,
+    "service_tier": null,
+    "system_fingerprint": "vllm-0.1.dev1+g1bed5fc81-tp2-9705eecb",
+    "usage": {
+     "completion_tokens": 66,
+     "prompt_tokens": 637,
+     "total_tokens": 703,
+     "completion_tokens_details": {
+      "accepted_prediction_tokens": null,
+      "audio_tokens": null,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": null
+     },
+     "prompt_tokens_details": {
+      "audio_tokens": null,
+      "cached_tokens": 0,
+      "created_cache_tokens": 0,
+      "multimodal_tokens": {
+       "image": 262
+      }
+     }
+    },
+    "prompt_logprobs": null,
+    "prompt_token_ids": null,
+    "prompt_text": null,
+    "kv_transfer_params": null,
+    "ec_transfer_params": null,
+    "metrics": null
+   }
+  },
+  {
+   "case": "super_tool",
+   "model": "nvidia/nemotron-3-super-120b-a12b",
+   "http": 200,
+   "latency_s": 1.239,
+   "request_extra_keys": [
+    "chat_template_kwargs"
+   ],
+   "response": {
+    "id": "chatcmpl-a4c2444039ec4efa",
+    "choices": [
+     {
+      "finish_reason": "tool_calls",
+      "index": 0,
+      "logprobs": null,
+      "message": {
+       "content": "I'll pick candidate 0 as it provides new information on the less explored left side of the map.",
+       "refusal": null,
+       "role": "assistant",
+       "annotations": null,
+       "audio": null,
+       "function_call": null,
+       "tool_calls": [
+        {
+         "id": "chatcmpl-tool-aa4c29ce5ae58662",
+         "function": {
+          "arguments": "{\"agent\": \"a0\", \"candidate_index\": 0, \"reason\": \"Candidate 0 offers unexplored territory on the left edge where little data exists.\"}",
+          "name": "assign"
+         },
+         "type": "function"
+        }
+       ],
+       "reasoning": null
+      },
+      "stop_reason": null,
+      "token_ids": null,
+      "routed_experts": null
+     }
+    ],
+    "created": 1793221194,
+    "model": "nvidia/nemotron-3-super-120b-a12b",
+    "object": "chat.completion",
+    "moderation": null,
+    "service_tier": null,
+    "system_fingerprint": "vllm-0.1.dev1+g5001743e3-tp2-05adddbc",
+    "usage": {
+     "completion_tokens": 80,
+     "prompt_tokens": 456,
+     "total_tokens": 536,
+     "completion_tokens_details": {
+      "accepted_prediction_tokens": null,
+      "audio_tokens": null,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": null
+     },
+     "prompt_tokens_details": {
+      "audio_tokens": null,
+      "cached_tokens": 0,
+      "created_cache_tokens": 0,
+      "multimodal_tokens": null
+     },
+     "prompt_cache_hit_tokens": 0,
+     "prompt_cache_miss_tokens": 456
+    },
+    "prompt_logprobs": null,
+    "prompt_token_ids": null,
+    "prompt_text": null,
+    "kv_transfer_params": null,
+    "ec_transfer_params": null,
+    "metrics": null
+   }
+  }
+ ]
+}

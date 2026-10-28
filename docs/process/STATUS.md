@@ -1,5 +1,13 @@
 # Status (newest first; times IST)
 
+## 2026-10-29 02:30 — G0 passed (FM): live Nemotron on Token Factory
+
+- **Key:** the user's key is in place (outside the repo, 0600).
+- **Models:** `GET /v1/models` lists 5 NVIDIA models; IDs, regions and prices are in D301.
+- **Live calls:** Super-VL with an image and an `assign` tool, and Super 120B with the tool, both returned HTTP 200 in about 1.1 s with a valid tool call and 0 reasoning tokens. Cost < USD 0.001.
+- **Budget:** USD 59 credit; anything beyond is billed to the user's bank. FP builds a ledger cap into the provider (hard USD 40, warn USD 25).
+- **Sessions:** FP and FV started at ~02:15. Recording: Kaggle GPU as a stretch (go/no-go 29 Oct 18:00), local recording guaranteed. Narration: same TTS as the Ariadne film, new script.
+
 ## 2026-10-29 01:30 — Internal G0 no-go time passed (FM)
 
 - **No Nebius key** at `~/.config/ariadne/nebius.env` as of 01:26. The plan's hard no-go (29 Oct 00:00) has passed without G0.

@@ -5954,3 +5954,29 @@ served by Nebius Token Factory (Physical AI track).
 
 **Verified.** Clone at `0ca523c`. `git remote -v` shows the new origin, with upstream push `DISABLED`. `git ls-remote origin` reaches the empty repo.
 Decision IDs D300–D349 are claimed by the fork: FM D300–D309, FP D310–D329, FV D330–D339, D340–D349 reserved.
+
+## 2026-10-29 — D301: Token Factory endpoint, Nemotron model IDs and prices (G0)
+
+**What.** The fork uses base URL `https://api.tokenfactory.nebius.com/v1` (OpenAI-compatible; `api.studio.nebius.com` also answers).
+Model IDs are taken from `GET /v1/models?verbose=true` on 2026-10-29 02:29 IST, exactly as served:
+
+| model ID | modality | region | $/1M in | $/1M out | features |
+|---|---|---|---|---|---|
+| `nvidia/Nemotron-3.5-Super-VL` | text+image→text | us-north1 | 0.30 | 0.90 | tools, reasoning |
+| `nvidia/nemotron-3-super-120b-a12b` | text→text | us-central1 | 0.30 | 0.90 | tools, reasoning |
+| `nvidia/Nemotron-3_5-Lightning` | text→text | eu-north1 | 0.06 | 0.24 | tools, reasoning |
+| `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B` | text→text | eu-north1 | 0.06 | 0.24 | tools, reasoning |
+| `nvidia/Nemotron-3-Ultra-550b-a55b` | text→text | us-central1 | 1.00 | 3.00 | tools, reasoning |
+
+Image tokens are billed as prompt tokens (`pricing.image` is 0). A 262-token map image was observed.
+
+**Why.** The ID casing differs between sources (`Nemotron-3_5-Lightning`, lower-case `nemotron-3-super`), so config takes IDs from this
+listing, never from docs. The user's credit is USD 59 and any overrun is billed to their bank. The provider therefore enforces a ledger cap
+(hard USD 40, warn USD 25) using these prices.
+
+**Verified [VERIFIED].** Artifacts are in `evaluation/runs/nemotron/g0_20261028T205925Z/` (`models_verbose.json`, `g0_calls.json`, `g0_call.py`); the key appears in none of them.
+- **Super-VL**, with a PNG occupancy slab (observed map, no ground truth), an `assign` tool, `tool_choice:auto` and
+  `reasoning_effort:"none"`: HTTP 200 in 1.06 s, 637 in / 66 out tokens, reasoning_tokens 0, one well-formed `assign` call.
+- **Super 120B**, with `chat_template_kwargs.enable_thinking:false`: HTTP 200 in 1.24 s, 456 / 80, reasoning_tokens 0, one well-formed `assign` call.
+- **Caveat:** VL's free-text reason cited "a0's current position", which the prompt never gave. Model rationales are
+  untrusted text and are never evidence; this is consistent with the invariant that the model never certifies geometry.
