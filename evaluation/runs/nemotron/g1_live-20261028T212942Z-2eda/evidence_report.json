@@ -1,0 +1,634 @@
+{
+ "run": "/data/code/ariadne-nemotron/build/live/runs/live-20261028T212942Z-2eda",
+ "decisions": {
+  "agent_decisions": 36,
+  "by_source": {
+   "orchestrator": 32,
+   "fallback": 4
+  }
+ },
+ "llm": {
+  "models": [
+   "nvidia/Nemotron-3_5-Lightning"
+  ],
+  "calls": 138,
+  "latency_p50_s": 10.726500000000001,
+  "latency_max_s": 13.857,
+  "input_tokens": 3095177,
+  "output_tokens": 11647,
+  "est_usd": 0.18851,
+  "errors": [
+   "nvidia/Nemotron-3_5-Lightning: finish_reason length with no tool call (max_tokens 512)"
+  ]
+ },
+ "hypotheses": {
+  "total": 21,
+  "created_by_source": {
+   "seed": 6,
+   "vl": 15
+  },
+  "vl_annotated": 5,
+  "final_status": {
+   "confirmed": 14,
+   "refuted": 3,
+   "supported": 3,
+   "unresolved": 1
+  },
+  "first_verified_resolution_t_s": 10
+ },
+ "vl": {
+  "calls": 16,
+  "by_outcome": {
+   "ok": 16
+  },
+  "est_usd": 0.05954,
+  "hit_rate": {
+   "n": 17,
+   "hits": 12,
+   "rate": 0.706,
+   "counts": "confirmed/refuted only; expired/unresolved/supported excluded",
+   "resolved_after_creation": {
+    "n": 8,
+    "hits": 5
+   },
+   "note": "a hypothesis resolved at its creation replan was already decided by the map the VL saw; resolved_after_creation is the predictive subset"
+  }
+ },
+ "chains": {
+  "targeted": 23,
+  "complete": 15,
+  "complete_with_refutation": 5,
+  "items": [
+   {
+    "hypothesis_id": "h001",
+    "decision_id": "t5000ms",
+    "t_s": 5,
+    "agent": 0,
+    "candidate": 0,
+    "evidence_goal": "observe if the free passage continues beyond the frontier at (0.75,3.25)",
+    "source": "seed",
+    "gate_accept": true,
+    "motion": true,
+    "new_slab": "/work/build/live/runs/live-20261028T212942Z-2eda/89e61fecbb277f69-live-20261028T212947Z/snapshots/slab_10000.png",
+    "status_change": {
+     "t_s": 15,
+     "status": "confirmed",
+     "reason": "observed free crossing at 0.40 m clearance"
+    },
+    "different_next": {
+     "t_s": 20,
+     "goal_xy_m": [
+      -0.01887688278,
+      3.08040275
+     ],
+     "moved_m": 0.26,
+     "source": "orchestrator",
+     "different": false
+    },
+    "complete": false
+   },
+   {
+    "hypothesis_id": "h002",
+    "decision_id": "t5000ms",
+    "t_s": 5,
+    "agent": 1,
+    "candidate": 0,
+    "evidence_goal": "observe if the free passage continues beyond the frontier at (0.75,14.75)",
+    "source": "seed",
+    "gate_accept": true,
+    "motion": true,
+    "new_slab": "/work/build/live/runs/live-20261028T212942Z-2eda/89e61fecbb277f69-live-20261028T212947Z/snapshots/slab_10000.png",
+    "status_change": {
+     "t_s": 15,
+     "status": "confirmed",
+     "reason": "observed free crossing at 0.40 m clearance"
+    },
+    "different_next": {
+     "t_s": 20,
+     "goal_xy_m": [
+      1.484633135,
+      14.59775907
+     ],
+     "moved_m": 1.74,
+     "source": "orchestrator",
+     "different": true
+    },
+    "complete": true
+   },
+   {
+    "hypothesis_id": "h001",
+    "decision_id": "t10000ms",
+    "t_s": 10,
+    "agent": 0,
+    "candidate": 1,
+    "evidence_goal": "observe free passage beyond the frontier at (0.75, 3.25)",
+    "source": "seed",
+    "gate_accept": true,
+    "motion": true,
+    "new_slab": "/work/build/live/runs/live-20261028T212942Z-2eda/89e61fecbb277f69-live-20261028T212947Z/snapshots/slab_15000.png",
+    "status_change": {
+     "t_s": 15,
+     "status": "confirmed",
+     "reason": "observed free crossing at 0.40 m clearance"
+    },
+    "different_next": {
+     "t_s": 20,
+     "goal_xy_m": [
+      -0.01887688278,
+      3.08040275
+     ],
+     "moved_m": 0.12,
+     "source": "orchestrator",
+     "different": false
+    },
+    "complete": false
+   },
+   {
+    "hypothesis_id": "h002",
+    "decision_id": "t10000ms",
+    "t_s": 10,
+    "agent": 1,
+    "candidate": 0,
+    "evidence_goal": "observe free passage beyond the frontier at (0.75, 14.75)",
+    "source": "seed",
+    "gate_accept": true,
+    "motion": true,
+    "new_slab": "/work/build/live/runs/live-20261028T212942Z-2eda/89e61fecbb277f69-live-20261028T212947Z/snapshots/slab_15000.png",
+    "status_change": {
+     "t_s": 15,
+     "status": "confirmed",
+     "reason": "observed free crossing at 0.40 m clearance"
+    },
+    "different_next": {
+     "t_s": 20,
+     "goal_xy_m": [
+      1.484633135,
+      14.59775907
+     ],
+     "moved_m": 1.4,
+     "source": "orchestrator",
+     "different": true
+    },
+    "complete": true
+   },
+   {
+    "hypothesis_id": "h006",
+    "decision_id": "t20000ms",
+    "t_s": 20,
+    "agent": 0,
+    "candidate": 9,
+    "evidence_goal": "observe whether the frontier at (-1.08, 3.08) opens into a passable route",
+    "source": "vl",
+    "gate_accept": true,
+    "motion": true,
+    "new_slab": "/work/build/live/runs/live-20261028T212942Z-2eda/89e61fecbb277f69-live-20261028T212947Z/snapshots/slab_25000.png",
+    "status_change": {
+     "t_s": 80,
+     "status": "confirmed",
+     "reason": "observed free crossing at 0.40 m clearance"
+    },
+    "different_next": {
+     "t_s": 85,
+     "goal_xy_m": [
+      5.326120467,
+      2.867316568
+     ],
+     "moved_m": 5.35,
+     "source": "orchestrator",
+     "different": true
+    },
+    "complete": true
+   },
+   {
+    "hypothesis_id": "h006",
+    "decision_id": "t25000ms",
+    "t_s": 25,
+    "agent": 0,
+    "candidate": 14,
+    "evidence_goal": "observe free way beyond the frontier at (-1.08, 3.08) to confirm or refute h006",
+    "source": "vl",
+    "gate_accept": true,
+    "motion": true,
+    "new_slab": "/work/build/live/runs/live-20261028T212942Z-2eda/89e61fecbb277f69-live-20261028T212947Z/snapshots/slab_30000.png",
+    "status_change": {
+     "t_s": 80,
+     "status": "confirmed",
+     "reason": "observed free crossing at 0.40 m clearance"
+    },
+    "different_next": {
+     "t_s": 85,
+     "goal_xy_m": [
+      5.326120467,
+      2.867316568
+     ],
+     "moved_m": 5.32,
+     "source": "orchestrator",
+     "different": true
+    },
+    "complete": true
+   },
+   {
+    "hypothesis_id": "h010",
+    "decision_id": "t35000ms",
+    "t_s": 35,
+    "agent": 0,
+    "candidate": 0,
+    "evidence_goal": "observe whether the frontier at (2.37,1.68) opens into a passage with 0.40 m clearance",
+    "source": "seed",
+    "gate_accept": true,
+    "motion": true,
+    "new_slab": "/work/build/live/runs/live-20261028T212942Z-2eda/89e61fecbb277f69-live-20261028T212947Z/snapshots/slab_40000.png",
+    "status_change": {
+     "t_s": 60,
+     "status": "refuted",
+     "reason": "observed obstacles close every crossing at 0.40 m clearance (unknown treated as free)"
+    },
+    "different_next": {
+     "t_s": 65,
+     "goal_xy_m": [
+      -0.2412368672,
+      3.061389685
+     ],
+     "moved_m": 1.91,
+     "source": "orchestrator",
+     "different": true
+    },
+    "complete": true
+   },
+   {
+    "hypothesis_id": "h010",
+    "decision_id": "t40000ms",
+    "t_s": 40,
+    "agent": 0,
+    "candidate": 5,
+    "evidence_goal": "observe free crossing at 0.40 m clearance beyond the frontier",
+    "source": "seed",
+    "gate_accept": true,
+    "motion": true,
+    "new_slab": "/work/build/live/runs/live-20261028T212942Z-2eda/89e61fecbb277f69-live-20261028T212947Z/snapshots/slab_45000.png",
+    "status_change": {
+     "t_s": 60,
+     "status": "refuted",
+     "reason": "observed obstacles close every crossing at 0.40 m clearance (unknown treated as free)"
+    },
+    "different_next": {
+     "t_s": 65,
+     "goal_xy_m": [
+      -0.2412368672,
+      3.061389685
+     ],
+     "moved_m": 2.5,
+     "source": "orchestrator",
+     "different": true
+    },
+    "complete": true
+   },
+   {
+    "hypothesis_id": "h010",
+    "decision_id": "t45000ms",
+    "t_s": 45,
+    "agent": 0,
+    "candidate": 5,
+    "evidence_goal": "observe free crossing at 0.40 m clearance beyond the frontier",
+    "source": "seed",
+    "gate_accept": true,
+    "motion": true,
+    "new_slab": "/work/build/live/runs/live-20261028T212942Z-2eda/89e61fecbb277f69-live-20261028T212947Z/snapshots/slab_50000.png",
+    "status_change": {
+     "t_s": 60,
+     "status": "refuted",
+     "reason": "observed obstacles close every crossing at 0.40 m clearance (unknown treated as free)"
+    },
+    "different_next": {
+     "t_s": 65,
+     "goal_xy_m": [
+      -0.2412368672,
+      3.061389685
+     ],
+     "moved_m": 3.32,
+     "source": "orchestrator",
+     "different": true
+    },
+    "complete": true
+   },
+   {
+    "hypothesis_id": "h010",
+    "decision_id": "t50000ms",
+    "t_s": 50,
+    "agent": 0,
+    "candidate": 2,
+    "evidence_goal": "confirm free crossing at 0.40 m clearance beyond the frontier",
+    "source": "seed",
+    "gate_accept": true,
+    "motion": true,
+    "new_slab": "/work/build/live/runs/live-20261028T212942Z-2eda/89e61fecbb277f69-live-20261028T212947Z/snapshots/slab_55000.png",
+    "status_change": {
+     "t_s": 60,
+     "status": "refuted",
+     "reason": "observed obstacles close every crossing at 0.40 m clearance (unknown treated as free)"
+    },
+    "different_next": {
+     "t_s": 65,
+     "goal_xy_m": [
+      -0.2412368672,
+      3.061389685
+     ],
+     "moved_m": 2.45,
+     "source": "orchestrator",
+     "different": true
+    },
+    "complete": true
+   },
+   {
+    "hypothesis_id": "h010",
+    "decision_id": "t55000ms",
+    "t_s": 55,
+    "agent": 0,
+    "candidate": 2,
+    "evidence_goal": "observe free way reaching the frontier at (2.37,1.68) and confirm passage beyond",
+    "source": "seed",
+    "gate_accept": true,
+    "motion": true,
+    "new_slab": "/work/build/live/runs/live-20261028T212942Z-2eda/89e61fecbb277f69-live-20261028T212947Z/snapshots/slab_60000.png",
+    "status_change": {
+     "t_s": 60,
+     "status": "refuted",
+     "reason": "observed obstacles close every crossing at 0.40 m clearance (unknown treated as free)"
+    },
+    "different_next": {
+     "t_s": 65,
+     "goal_xy_m": [
+      -0.2412368672,
+      3.061389685
+     ],
+     "moved_m": 3.32,
+     "source": "orchestrator",
+     "different": true
+    },
+    "complete": true
+   },
+   {
+    "hypothesis_id": "h006",
+    "decision_id": "t60000ms",
+    "t_s": 60,
+    "agent": 0,
+    "candidate": 26,
+    "evidence_goal": "confirm that the frontier at (-1.08,\u202f3.08) opens onto a passage",
+    "source": "vl",
+    "gate_accept": true,
+    "motion": true,
+    "new_slab": "/work/build/live/runs/live-20261028T212942Z-2eda/89e61fecbb277f69-live-20261028T212947Z/snapshots/slab_65000.png",
+    "status_change": {
+     "t_s": 80,
+     "status": "confirmed",
+     "reason": "observed free crossing at 0.40 m clearance"
+    },
+    "different_next": {
+     "t_s": 85,
+     "goal_xy_m": [
+      5.326120467,
+      2.867316568
+     ],
+     "moved_m": 5.56,
+     "source": "orchestrator",
+     "different": true
+    },
+    "complete": true
+   },
+   {
+    "hypothesis_id": "h006",
+    "decision_id": "t65000ms",
+    "t_s": 65,
+    "agent": 0,
+    "candidate": 26,
+    "evidence_goal": "observe whether the frontier at (-1.08, 3.08) opens onto a responder\u2011passable passage",
+    "source": "vl",
+    "gate_accept": true,
+    "motion": true,
+    "new_slab": "/work/build/live/runs/live-20261028T212942Z-2eda/89e61fecbb277f69-live-20261028T212947Z/snapshots/slab_70000.png",
+    "status_change": {
+     "t_s": 80,
+     "status": "confirmed",
+     "reason": "observed free crossing at 0.40 m clearance"
+    },
+    "different_next": {
+     "t_s": 85,
+     "goal_xy_m": [
+      5.326120467,
+      2.867316568
+     ],
+     "moved_m": 5.57,
+     "source": "orchestrator",
+     "different": true
+    },
+    "complete": true
+   },
+   {
+    "hypothesis_id": "h006",
+    "decision_id": "t70000ms",
+    "t_s": 70,
+    "agent": 0,
+    "candidate": 0,
+    "evidence_goal": "observe whether the frontier at (-1.08,\u202f3.08) opens into a passage",
+    "source": "vl",
+    "gate_accept": true,
+    "motion": true,
+    "new_slab": "/work/build/live/runs/live-20261028T212942Z-2eda/89e61fecbb277f69-live-20261028T212947Z/snapshots/slab_75000.png",
+    "status_change": {
+     "t_s": 80,
+     "status": "confirmed",
+     "reason": "observed free crossing at 0.40 m clearance"
+    },
+    "different_next": {
+     "t_s": 85,
+     "goal_xy_m": [
+      5.326120467,
+      2.867316568
+     ],
+     "moved_m": 2.46,
+     "source": "orchestrator",
+     "different": true
+    },
+    "complete": true
+   },
+   {
+    "hypothesis_id": "h018",
+    "decision_id": "t70000ms",
+    "t_s": 70,
+    "agent": 1,
+    "candidate": 0,
+    "evidence_goal": "observe whether the frontier at (5.75,\u202f14.75) opens into a responder\u2011passable passage",
+    "source": "vl",
+    "gate_accept": true,
+    "motion": true,
+    "new_slab": "/work/build/live/runs/live-20261028T212942Z-2eda/89e61fecbb277f69-live-20261028T212947Z/snapshots/slab_75000.png",
+    "status_change": {
+     "t_s": 80,
+     "status": "confirmed",
+     "reason": "observed free crossing at 0.40 m clearance"
+    },
+    "different_next": {
+     "t_s": 85,
+     "goal_xy_m": [
+      7.25,
+      15.25
+     ],
+     "moved_m": 2.43,
+     "source": "orchestrator",
+     "different": true
+    },
+    "complete": true
+   },
+   {
+    "hypothesis_id": "h006",
+    "decision_id": "t75000ms",
+    "t_s": 75,
+    "agent": 0,
+    "candidate": 0,
+    "evidence_goal": "observe whether the frontier at (-1.08,\u202f3.08) opens into a passable route",
+    "source": "vl",
+    "gate_accept": true,
+    "motion": true,
+    "new_slab": "/work/build/live/runs/live-20261028T212942Z-2eda/89e61fecbb277f69-live-20261028T212947Z/snapshots/slab_80000.png",
+    "status_change": {
+     "t_s": 80,
+     "status": "confirmed",
+     "reason": "observed free crossing at 0.40 m clearance"
+    },
+    "different_next": {
+     "t_s": 85,
+     "goal_xy_m": [
+      5.326120467,
+      2.867316568
+     ],
+     "moved_m": 2.48,
+     "source": "orchestrator",
+     "different": true
+    },
+    "complete": true
+   },
+   {
+    "hypothesis_id": "h018",
+    "decision_id": "t75000ms",
+    "t_s": 75,
+    "agent": 1,
+    "candidate": 0,
+    "evidence_goal": "observe whether the frontier at (5.75,\u202f14.75) opens into a passable route",
+    "source": "vl",
+    "gate_accept": true,
+    "motion": true,
+    "new_slab": "/work/build/live/runs/live-20261028T212942Z-2eda/89e61fecbb277f69-live-20261028T212947Z/snapshots/slab_80000.png",
+    "status_change": {
+     "t_s": 80,
+     "status": "confirmed",
+     "reason": "observed free crossing at 0.40 m clearance"
+    },
+    "different_next": {
+     "t_s": 85,
+     "goal_xy_m": [
+      7.25,
+      15.25
+     ],
+     "moved_m": 1.96,
+     "source": "orchestrator",
+     "different": true
+    },
+    "complete": true
+   },
+   {
+    "hypothesis_id": "h019",
+    "decision_id": "t80000ms",
+    "t_s": 80,
+    "agent": 0,
+    "candidate": 0,
+    "evidence_goal": "observe whether the frontier at (6.25,3.25) opens onto a responder-passable passage",
+    "source": "seed",
+    "gate_accept": true,
+    "motion": true,
+    "new_slab": "/work/build/live/runs/live-20261028T212942Z-2eda/89e61fecbb277f69-live-20261028T212947Z/snapshots/slab_85000.png",
+    "status_change": null,
+    "different_next": null,
+    "complete": false
+   },
+   {
+    "hypothesis_id": "h015",
+    "decision_id": "t80000ms",
+    "t_s": 80,
+    "agent": 1,
+    "candidate": 0,
+    "evidence_goal": "observe whether the frontier at (3.04,12.00) opens onto a responder-passable passage",
+    "source": "vl",
+    "gate_accept": true,
+    "motion": true,
+    "new_slab": "/work/build/live/runs/live-20261028T212942Z-2eda/89e61fecbb277f69-live-20261028T212947Z/snapshots/slab_85000.png",
+    "status_change": null,
+    "different_next": null,
+    "complete": false
+   },
+   {
+    "hypothesis_id": "h019",
+    "decision_id": "t85000ms",
+    "t_s": 85,
+    "agent": 0,
+    "candidate": 0,
+    "evidence_goal": "confirm the frontier at (6.25,3.25) opens onto a responder-passable passage",
+    "source": "seed",
+    "gate_accept": true,
+    "motion": true,
+    "new_slab": "/work/build/live/runs/live-20261028T212942Z-2eda/89e61fecbb277f69-live-20261028T212947Z/snapshots/slab_90000.png",
+    "status_change": null,
+    "different_next": null,
+    "complete": false
+   },
+   {
+    "hypothesis_id": "h021",
+    "decision_id": "t85000ms",
+    "t_s": 85,
+    "agent": 1,
+    "candidate": 0,
+    "evidence_goal": "confirm the frontier at (6.93,15.07) opens onto a responder-passable passage",
+    "source": "seed",
+    "gate_accept": true,
+    "motion": true,
+    "new_slab": "/work/build/live/runs/live-20261028T212942Z-2eda/89e61fecbb277f69-live-20261028T212947Z/snapshots/slab_90000.png",
+    "status_change": {
+     "t_s": 90,
+     "status": "unresolved",
+     "reason": "not enough observed space to decide"
+    },
+    "different_next": null,
+    "complete": false
+   },
+   {
+    "hypothesis_id": "h019",
+    "decision_id": "t90000ms",
+    "t_s": 90,
+    "agent": 0,
+    "candidate": 0,
+    "evidence_goal": "observe whether the frontier at (6.25,3.25) opens onto a responder-passable passage",
+    "source": "seed",
+    "gate_accept": true,
+    "motion": true,
+    "new_slab": null,
+    "status_change": null,
+    "different_next": null,
+    "complete": false
+   },
+   {
+    "hypothesis_id": "h021",
+    "decision_id": "t90000ms",
+    "t_s": 90,
+    "agent": 1,
+    "candidate": 0,
+    "evidence_goal": "observe whether the frontier at (6.93,15.07) opens onto a responder-passable passage",
+    "source": "seed",
+    "gate_accept": true,
+    "motion": true,
+    "new_slab": null,
+    "status_change": null,
+    "different_next": null,
+    "complete": false
+   }
+  ]
+ }
+}
