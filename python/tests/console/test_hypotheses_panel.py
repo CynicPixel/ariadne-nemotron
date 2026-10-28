@@ -97,7 +97,8 @@ def test_tolerant_of_a_half_written_line_and_of_no_file(run, monkeypatch, tmp_pa
     empty = tmp_path_factory.mktemp("empty")
     monkeypatch.setenv("ARIADNE_LIVE", f"{empty}:/nonexistent/scene")
     d = c.get("/api/hypotheses").json()
-    assert d == {"available": False, "hypotheses": [], "counts": {s: 0 for s in d["counts"]}, "changes": [], "decision": None}
+    assert d == {"available": False, "hypotheses": [], "counts": {s: 0 for s in d["counts"]}, "changes": [], "decision": None,
+                 "vl": None}
 
 
 def test_recorded_file_mode(run, monkeypatch):
@@ -122,3 +123,33 @@ def test_cache_follows_the_file(run):
         f.write(json.dumps({"sim_t_s": 70, "event": "status", "hypothesis_id": "h001", "agent_id": 0,
                             "status": "expired", "status_source": "verifier", "provenance": {}}) + "\n")
     assert c.get("/api/hypotheses").json()["counts"]["expired"] == 1
+
+
+G2 = Path(__file__).resolve().parent / "fixtures/g2_b93e"
+
+
+def test_real_g2_run_layout(tmp_path, monkeypatch):
+    """Regression: on G2's real lines the endpoint returned HTTP 500 ('str' object has no attribute 'get'). The second
+    agent's choice record carries answer = "see agent 0's record"; at t = 95 s the first agent's is a fallback that still
+    carries the failed attempt's orchestrator block. The run-level vl_call events have hypothesis_id null."""
+    run = tmp_path / "live-20261028T214744Z-b93e"
+    shutil.copytree(G2, run, ignore=shutil.ignore_patterns("README.md"))
+    monkeypatch.delenv("ARIADNE_HYPOTHESES", raising=False)
+    monkeypatch.setenv("ARIADNE_LIVE", f"{run}:/nonexistent/scene")
+    app = FastAPI()
+    app.include_router(router)
+    r = TestClient(app).get("/api/hypotheses")
+    assert r.status_code == 200
+    d = r.json()
+    events = [json.loads(x) for x in (G2 / "hypotheses.jsonl").read_text().splitlines()]
+    want = {}
+    for e in events:
+        if e.get("hypothesis_id"):
+            want[e["hypothesis_id"]] = e["status"]
+    assert {h["hypothesis_id"]: h["status"] for h in d["hypotheses"]} == want and None not in want
+    dec = d["decision"]
+    assert (dec["t_s"], dec["decision_id"], dec["source"], dec["model"]) == (95, "t95000ms", "fallback",
+                                                                             "nvidia/Nemotron-3_5-Lightning")
+    vl = next(e for e in reversed(events) if e["event"] == "vl_call")
+    assert d["vl"]["model"] == vl["orchestrator"]["model"] == "nvidia/Nemotron-3.5-Super-VL"
+    assert d["vl"]["latency_s"] == vl["orchestrator"]["latency_ms"] / 1000

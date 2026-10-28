@@ -71,9 +71,14 @@ def _read_events(f: Path) -> list[dict]:
             r = json.loads(line)
         except ValueError:   # the writer may be mid-line
             continue
-        if isinstance(r, dict) and r.get("hypothesis_id"):
+        if isinstance(r, dict):   # hypothesis events, plus run-level ones (vl_call: hypothesis_id null)
             out.append(r)
     return out
+
+
+def _d(v) -> dict:
+    """v if it is a dict, else {}: real records mix shapes (a string `answer`, null `provenance`, ...)."""
+    return v if isinstance(v, dict) else {}
 
 
 def _run_relative(p: str | None) -> str | None:
@@ -110,20 +115,22 @@ def fold(events: list[dict], root: Path | None) -> list[dict]:
     """The newest state of each hypothesis, open ones first, then by id."""
     state: dict[str, dict] = {}
     for r in events:
-        hid = r["hypothesis_id"]
+        hid = r.get("hypothesis_id")
+        if not isinstance(hid, str) or not hid:
+            continue
         h = state.setdefault(hid, {"hypothesis_id": hid, "history": [], "targeted": []})
         if r.get("event") == "targeted":
             h["targeted"].append({"sim_t_s": r.get("sim_t_s"), "agent": r.get("targeted_by_agent"),
                                   "candidate": r.get("candidate"), "decision_id": r.get("decision_id")})
         if r.get("status") and (not h["history"] or h["history"][-1]["status"] != r["status"]):
             h["history"].append({"sim_t_s": r.get("sim_t_s"), "status": r["status"], "source": r.get("status_source")})
-        prov = r.get("provenance") or {}
+        prov = _d(r.get("provenance"))
         h.update({"agent_id": r.get("agent_id"), "status": r.get("status"), "status_source": r.get("status_source"),
                   "claim": r.get("claim"), "evidence_goal": r.get("evidence_goal") or h.get("evidence_goal"),
                   "sim_t_s": r.get("sim_t_s"), "decision_id": r.get("decision_id"), "anchor": r.get("anchor"),
-                  "verifier": r.get("verifier") or h.get("verifier"), "source": prov.get("source"),
+                  "verifier": _d(r.get("verifier")) or h.get("verifier"), "source": prov.get("source"),
                   "map_url": _image(root, prov.get("map_png")), "keyframe_url": _image(root, prov.get("keyframe_path"))})
-        if r.get("orchestrator"):   # present only on VL-proposer records (§3.1)
+        if _d(r.get("orchestrator")):   # present only on VL-proposer records (§3.1)
             h["orchestrator"] = r["orchestrator"]
     rank = {"unresolved": 0, "supported": 0}
     return sorted(state.values(), key=lambda h: (rank.get(h.get("status"), 1), h["hypothesis_id"]))
@@ -163,8 +170,10 @@ def _newest_decision(f: Path, size: int, n: int) -> dict | None:
             r = json.loads(line)
         except ValueError:
             continue
-        ch = r.get("choice") or {}
-        o = (ch.get("answer") or {}).get("orchestrator")
+        # One choice record per agent: the first agent's carries answer = {..., "orchestrator": {...}}, the others carry
+        # answer = "see agent 0's record"; a fallback record may still carry the orchestrator block of the failed attempt.
+        ch = _d(_d(r).get("choice"))
+        o = _d(_d(ch.get("answer")).get("orchestrator"))
         if o:
             return {"t_s": r.get("t_s"), "decision_id": ch.get("decision_id"), "source": ch.get("source"),
                     "validation": ch.get("validation"), "provider": o.get("provider"), "model": o.get("model"),
@@ -179,11 +188,18 @@ def hypotheses() -> JSONResponse:
     root, f = _sources()
     ev = _events(f)
     hs = fold(ev, root)
-    changes = [{"sim_t_s": r.get("sim_t_s"), "hypothesis_id": r["hypothesis_id"], "status": r.get("status"),
+    changes = [{"sim_t_s": r.get("sim_t_s"), "hypothesis_id": r.get("hypothesis_id"), "status": r.get("status"),
                 "event": r.get("event")} for r in ev if r.get("event") in ("status", "contradiction")][-20:]
+    vl = next((r for r in reversed(ev) if r.get("event") == "vl_call"), None)
+    vo = _d(_d(vl).get("orchestrator"))
     return JSONResponse({"available": f is not None, "hypotheses": hs,
                          "counts": {s: sum(1 for h in hs if h.get("status") == s) for s in STATUSES},
-                         "changes": changes, "decision": latest_decision(_trace(root))})
+                         "changes": changes, "decision": latest_decision(_trace(root)),
+                         "vl": vl and {"sim_t_s": vl.get("sim_t_s"), "decision_id": vl.get("decision_id"),
+                                       "outcome": vl.get("outcome"), "proposed": vl.get("proposed"), "valid": vl.get("valid"),
+                                       "provider": vo.get("provider"), "model": vo.get("model"),
+                                       "latency_s": vo["latency_ms"] / 1000 if isinstance(vo.get("latency_ms"), (int, float)) else None,
+                                       "input_tokens": vo.get("tokens_in"), "output_tokens": vo.get("tokens_out")}})
 
 
 @router.get("/file")

@@ -631,12 +631,15 @@ const fmtS = (t) => (typeof t === "number" ? `${t.toFixed(1)} s` : "–");
 function renderHyp(d) {
   $("hyp").hidden = !d.available;
   if (!d.available) return;
-  const m = d.decision;
-  $("hyp-model").innerHTML = !m ? "no model decision yet" :
+  const m = d.decision, v = d.vl, secs = (x) => (typeof x === "number" ? x.toFixed(2) + " s" : "–");
+  $("hyp-model").innerHTML = (!m ? "decision: no model decision yet" :
     `decision ${esc(m.decision_id)} at ${fmtS(m.t_s)} · ${esc(m.provider ?? "")} <b>${esc(m.model ?? "?")}</b> · ` +
-    `${typeof m.latency_s === "number" ? m.latency_s.toFixed(2) + " s" : "–"} · ${esc(m.input_tokens)}→${esc(m.output_tokens)} tokens` +
+    `${secs(m.latency_s)} · ${esc(m.input_tokens)}→${esc(m.output_tokens)} tokens` +
     (m.fallback_used ? ' · <span class="hs refuted">fallback model</span>' : "") +
-    (m.source && m.source !== "orchestrator" ? ` · <span class="hs unresolved">${esc(m.source)}</span>` : "");
+    (m.source && m.source !== "orchestrator" ? ` · <span class="hs unresolved">${esc(m.source)}</span>` : "")) +
+    (!v ? "" : `<br>hypotheses ${esc(v.decision_id)} at ${fmtS(v.sim_t_s)} · ${esc(v.provider ?? "")} <b>${esc(v.model ?? "?")}</b> · ` +
+      `${secs(v.latency_s)} · ${esc(v.input_tokens)}→${esc(v.output_tokens)} tokens · ${esc(v.valid)}/${esc(v.proposed)} valid` +
+      (v.outcome && v.outcome !== "ok" ? ` · <span class="hs refuted">${esc(v.outcome)}</span>` : ""));
   $("hyp-counts").innerHTML = HYP_STATUSES.map((s) => `<span class="hs ${s}">${s} ${d.counts[s] ?? 0}</span>`).join("");
   if (!d.hypotheses.length) { $("hyp-list").innerHTML = '<p class="empty">none yet</p>'; return; }
   $("hyp-list").innerHTML = d.hypotheses.map((h) => {
