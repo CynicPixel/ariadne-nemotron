@@ -86,6 +86,19 @@ def row(run: Path) -> dict:
         v = q.with_name(q.name.replace(".request.json", ".json"))
         k = json.loads(v.read_text()).get("verdict", "?") if v.exists() else "no verdict file (timeout)"
         verdicts[k] = verdicts.get(k, 0) + 1
+    by_did = {}
+    for r in trace:
+        by_did.setdefault(r["choice"].get("decision_id"), []).append(r)
+    approvals = []
+    for q in reqs:
+        aid = q.name[:-len(".request.json")]          # <did>-a<k>-c<i>
+        did, k, c = aid.rsplit("-", 2)[0], int(aid.rsplit("-", 2)[1][1:]), int(aid.rsplit("-", 2)[2][1:])
+        recs = by_did.get(did, [])
+        a0 = next((answer_of(x) for x in recs if answer_of(x)), None)
+        lat = ((a0 or {}).get("orchestrator") or {}).get("latency_s")
+        val = next((x["choice"].get("validation") for x in recs if x["agent"] == k), None)
+        approvals.append({"decision_id": did, "agent": k, "candidate": c, "decision_latency_s": lat,
+                          "agent_validation": val, "became_fallback": bool(val and val.startswith("timeout"))})
     orch = [answer_of(r)["orchestrator"] for r in trace if r["agent"] == min(x["agent"] for x in trace)
             and answer_of(r) and answer_of(r).get("orchestrator")]
     lat = [o["latency_s"] for o in orch if o.get("latency_s") is not None]
@@ -95,6 +108,7 @@ def row(run: Path) -> dict:
            "egress_found_t_s": egress, "flown_m_end": (last[0].get("planner") or {}).get("flown_m"),
            "decisions_by_source": src, "proposals_rejected_by_gate": val, "no_answer": noans,
            "unsafe_actions_executed": unsafe, "approval_requests": len(reqs), "approval_verdicts": verdicts,
+           "approval_decisions": approvals,
            "llm_models": sorted({o.get("model") for o in orch if o.get("model")}),
            "llm_calls": sum(o.get("calls") or 0 for o in orch), "llm_latency_p50_s": pct(lat, 0.5),
            "llm_latency_p95_s": pct(lat, 0.95), "llm_input_tokens": sum(o.get("input_tokens") or 0 for o in orch),
@@ -133,8 +147,18 @@ def markdown(rows: list[dict]) -> str:
         agg.append(f"- {p}: n = {len(rs)}; free cells at end median {statistics.median(fe) if fe else '-'}; egress found "
                    f"in {sum(r['egress_found_t_s'] is not None for r in rs)}/{len(rs)}; proposals rejected by the gate "
                    f"{sum(sum(r['proposals_rejected_by_gate'].values()) for r in rs)}; unsafe actions executed "
-                   f"{sum(r['unsafe_actions_executed'] for r in rs)} (above threshold, no approval on record)")
-    return "\n".join(lines + agg) + CAVEATS
+                   f"{sum(r['unsafe_actions_executed'] for r in rs)} (above threshold, no approval on record); approval requests "
+                   f"{sum(r['approval_requests'] for r in rs)} (answer-window crossings -> fallback "
+                   f"{sum(x['became_fallback'] for r in rs for x in r['approval_decisions'])})")
+    ap = ["", "Operator approval requests (unattended runs: no operator, each request blocks the tool's 60 s window; at "
+          "RTF ~0.125 that is ~7.5 sim s with the agents on their previous command):", ""]
+    for r in sorted(rows, key=lambda r: (r["policy"], r["run"])):
+        for x in r.get("approval_decisions", []):
+            ap.append(f"- {r['policy']} {r['run']}: {x['decision_id']} agent {x['agent']} candidate {x['candidate']}, "
+                      f"decision latency {x['decision_latency_s']} s, {'FALLBACK (answer window crossed)' if x['became_fallback'] else 'answered: ' + str(x['agent_validation'])}")
+    if len(ap) == 3:
+        ap.append("- none")
+    return "\n".join(lines + agg + ap) + CAVEATS
 
 
 def main() -> None:
