@@ -6070,3 +6070,34 @@ listing, never from docs. The account has a limited credit budget, so the provid
     is a FAIL.
 - **Full history scan:** all refs, 790 commits, 931,328 added lines: **no secrets**.
 - `python/tests/console/test_demo.py` 8/8 passed.
+
+## 2026-10-29 — D319: decision tier = Lightning (Super on transport errors); VL hypothesis proposer on (FP)
+
+**What.**
+- **Decision chain** (`configs/llm/nemotron.yaml`): `nvidia/Nemotron-3_5-Lightning` first, then `nvidia/nemotron-3-super-120b-a12b`,
+  which runs only on a transport error. Both have reasoning off (`enable_thinking:false`) and `max_tokens` 512.
+- **Hypothesis tier:** `hypothesis.vl_proposer: true`. Every replan, Super-VL gets the runtime's own map render (labelled `aN:cK`),
+  the agents' keyframes and the planner's candidates. It must answer by calling `propose_hypotheses` (≤ 4 entries:
+  agent, candidate, predicts passage|dead_end, rationale, prior). The call runs asynchronously, one replan behind, so the
+  decision never waits for it.
+- **Validation:** each proposal is checked against the request the VL saw, then re-anchored by centroid. It creates a hypothesis,
+  or annotates an open hypothesis that already covers that frontier (`vl_annotated`).
+- **Fallback:** when no VL proposal lands at a replan (the first replan, an error, a timeout, budget, zero valid), the
+  deterministic seed fills in.
+- **Logging:** every VL call is a `vl_call` line in `hypotheses.jsonl`, whatever its outcome (FM).
+- **Status:** set only by the verifier.
+- **Hit rate:** VL `predicts` is compared with the verifier's terminal outcome. It is reported with n and counts only
+  confirmed/refuted; expired, unresolved and supported are excluded (FM).
+
+**Why.** The bench (`evaluation/runs/nemotron/bench_20261028T211611Z`, 10 recorded requests per model):
+- Lightning and Super both gave 20/20 valid agent decisions. Lightning's p95 is 8.1 s against Super's 26.9 s, at about 4× lower cost.
+- Nano answered 1/10 (no parsed tool calls). This is a negative result, and Nano is not used.
+
+The track thesis ("Nemotron proposes falsifiable hypotheses from what the robots saw") needs the VL in the loop. The plan
+lists VL generation as the last cut.
+
+**Verified.**
+- Bench: as above. The pre-run estimate (USD 0.14) was low; the bench spent USD 0.3758.
+- Live VL call (2026-10-29 ~04:40 IST) on a recorded request with a rendered slab: 4/4 valid proposals, 2.4 s, 10.9k/318 tokens,
+  USD 0.0036, 0 reasoning tokens. Its rationales cited "the keyframe" although none was sent: untrusted text, as D301 noted.
+- Offline: 42/42 orchestration tests.

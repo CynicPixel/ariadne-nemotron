@@ -1,0 +1,54 @@
+tool: orchestration.bench
+ts_utc: 20261028T211611Z
+git_commit: 3ecbe70b65d375522350fc2e92799fb6ea11be5c
+git_dirty_python_configs: true
+llm_config: configs/llm/nemotron.yaml
+llm_config_sha256: 39efc4df28b4752357faf5f2bc27a24039a07b73b7dfc03a9e0709ff0a51762b
+provider_base_url: https://api.tokenfactory.nebius.com/v1
+models:
+  nvidia/nemotron-3-super-120b-a12b:
+    provider: nebius
+    model: nvidia/nemotron-3-super-120b-a12b
+    images: false
+    max_tokens: 512
+    temperature: 0.0
+    extra_body:
+      chat_template_kwargs:
+        enable_thinking: false
+  nvidia/Nemotron-3_5-Lightning:
+    provider: nebius
+    model: nvidia/Nemotron-3_5-Lightning
+    images: false
+    max_tokens: 512
+    temperature: 0.0
+    extra_body:
+      chat_template_kwargs:
+        enable_thinking: false
+  nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B:
+    provider: nebius
+    model: nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B
+    images: false
+    max_tokens: 512
+    temperature: 0.0
+    extra_body:
+      chat_template_kwargs:
+        enable_thinking: false
+corpus: ../evaluation/runs/live-agentic/live_loop/llm_live_run5_maze_short_90s
+corpus_lineage: requests recorded by ariadne_live (Bedrock-era run); only the requests
+  are replayed, the recorded answers are reference only
+decision_ids:
+- t5000ms
+- t10000ms
+- t20000ms
+- t30000ms
+- t40000ms
+- t50000ms
+- t55000ms
+- t65000ms
+- t75000ms
+- t85000ms
+approval_stub: approved for every needs_approval
+ledger_usd_before: 0.007628
+ledger_usd_after: 0.411095
+estimate_usd: 0.1413
+python: 3.12.3

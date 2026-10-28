@@ -129,6 +129,16 @@ Lightning, Nano and VL.
   - **Cost:** prints an estimate from the config's prices before running, and refuses if `ledger + estimate ≥ usd_hard`.
   - Agreement with the recorded Bedrock-era choice is reported as reference only, never as accuracy.
 
+- **D319 Decision tier and VL proposer.** The bench picks Lightning, with Super on transport errors. The VL proposer is on:
+  async, validated, logged per call, seed fallback, hit rate over terminal outcomes only. Details are in `docs/decisions.md` D319.
+  Extra events in `hypotheses.jsonl`:
+  - `vl_annotated`: a VL prediction attached to an existing open hypothesis;
+  - `vl_call`: one per VL call, with `hypothesis_id: null`, `outcome` ok|no_tool_call|zero_valid|error, its tokens and its
+    latency. The console panel should skip lines without a `hypothesis_id`.
+  
+  A VL-created record has `provenance.source: "vl"` with `rationale`, `prior`, `predicts` and `seen_decision_id`, plus the
+  `orchestrator` block.
+
 ## 3. Acceptance (register F1/F2, gates G1/G2)
 
 ### 3.1 `hypotheses.jsonl` record (FV console panel)
@@ -153,5 +163,30 @@ One JSON object per line, append-only, one line per event. The panel keeps the l
 - The fixture is `python/tests/orchestration/fixtures/hypotheses_sample.jsonl`.
 
 ## 4. Tests
+
+These are the offline tests in `python/tests/orchestration/` (42; host venv and `ariadne-orchestrator:nemotron-1`):
+- `test_orchestrator_stub.py`: the Bedrock path, unchanged behaviour.
+- `test_nebius_provider.py`: covers
+  - the recorded Token Factory loops (Super, Lightning, Nano; 2026-10-29) through `decide()` and the real MCP servers;
+  - transport fallback, budget refusal, no-tool and `length` turns, bad JSON arguments, `<think>` text and image routing;
+  - the ledger (sums, unknown-model price, cap, warning once, unreadable line, env path);
+  - bench hygiene and gate scoring.
+- `test_verifier_hypotheses.py`: covers
+  - the verdicts on synthetic slabs, the status transitions and the slab guard;
+  - corpus geometry;
+  - a layer replay over a recorded run (confirmed and refuted both occur), and that only the request and slab are inputs;
+  - the MCP `list_hypotheses` and `assign` fields;
+  - the VL proposer (async fold-in, validation, `vl_call` logging, seed fallback, hit rate).
 ## 5. Cost (tokens per decision and per run, from the bench)
+
+Bench `bench_20261028T211611Z` (10 recorded requests per model):
+
+| model | mean prompt / completion tokens per decision | USD per decision |
+|---|---|---|
+| Lightning | 111k / 440 | 0.0067 |
+| Super | 88k / 778 | 0.027 |
+
+- **VL proposer:** ~11k / 0.3k per replan (one live call), USD ~0.0036.
+- **A 90 s run** (18 replans) on Lightning + VL is about USD 0.19.
+- **Prompt size:** prompt tokens are dominated by `list_candidates`, which is re-sent on every turn.
 ## 6. Result

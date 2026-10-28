@@ -157,15 +157,17 @@ def make_handler(ch: Chooser):
 
 
 async def serve(args) -> None:
-    ddir = Path(args.dir)
+    ddir = Path(args.dir).resolve()   # the MCP subprocesses run with cwd python/: a relative dir would differ
     ddir.mkdir(parents=True, exist_ok=True)
     cfg = load_config(args.llm_config)
     chain = cfg["decision"]["chain"]
     providers = {n: make_provider(n, cfg) for n in dict.fromkeys(s["provider"] for s in chain)}
     hyp = None
     if cfg.get("hypothesis", {}).get("enabled"):
-        from .hypotheses import HypothesisLayer
-        hyp = HypothesisLayer(ddir, cfg["hypothesis"])
+        from .hypotheses import HypothesisLayer, VLProposer
+        hc = cfg["hypothesis"]
+        vl = VLProposer(make_provider(hc["provider"], cfg, purpose="hypothesis"), hc) if hc.get("vl_proposer") else None
+        hyp = HypothesisLayer(ddir, hc, vl)
     async with Client(mcp_params(ddir, False)) as m_mm, Client(mcp_params(ddir, True)) as m_tx:
         mcps = {"multimodal": m_mm, "text": m_tx}
         tools = {k: (await c.list_tools()).tools for k, c in mcps.items()}
@@ -174,7 +176,7 @@ async def serve(args) -> None:
         ch = Chooser(ddir, mcps, providers, chain, cfgs, args.max_calls or cfg["decision"].get("max_calls", 10), hyp)
         srv = await asyncio.start_unix_server(make_handler(ch), path=args.socket, limit=LINE_LIMIT)
         print(f"orchestrator: config {cfg['_path']}; chain {[s['provider'] + ':' + s['model'] for s in chain]}; "
-              f"hypotheses {'on' if hyp else 'off'}; tools {[t.name for t in tools['multimodal']]}; "
+              f"hypotheses {('on, VL ' + cfg['hypothesis']['model']) if hyp and hyp.vl else ('on, seed only' if hyp else 'off')}; tools {[t.name for t in tools['multimodal']]}; "
               f"listening on {args.socket}", flush=True)
         async with srv:
             await srv.serve_forever()

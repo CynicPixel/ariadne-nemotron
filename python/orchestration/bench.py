@@ -39,9 +39,9 @@ from .providers import load_config, make_provider
 from .providers.nebius import make_ledger
 
 REPO = Path(__file__).resolve().parents[2]
-# Per-request token estimate before any measurement: [ASSUMPTION] a decision of ~4 tool turns re-sending a ~5k-token
-# context. Replaced by --est-in/--est-out from measured fixture usage once recorded.
-EST_IN, EST_OUT = 24000, 1200
+# Per-request token estimate: the 2026-10-29 bench measured 46k-111k mean prompt tokens per decision (late requests up
+# to ~200k: list_candidates is re-sent every turn), so the default is set above the measured means.
+EST_IN, EST_OUT = 120000, 1000
 
 
 def requests_of(corpus: Path, n: int) -> list[dict]:
@@ -216,6 +216,10 @@ def main() -> None:
         sys.exit("bench: refused, the estimate would cross the hard cap")
     if args.dry_run:
         return
+    # read the commit BEFORE the run: a checkout or merge during a long bench must not relabel it
+    commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO, capture_output=True, text=True).stdout.strip()
+    dirty = bool(subprocess.run(["git", "status", "--porcelain", "--untracked-files=no", "--", "python", "configs"],
+                                cwd=REPO, capture_output=True, text=True).stdout.strip())
     ts = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
     out = args.out or REPO / "evaluation" / "runs" / "nemotron" / f"bench_{ts}"
     out.mkdir(parents=True, exist_ok=True)
@@ -228,9 +232,6 @@ def main() -> None:
     (out / "results.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
     (out / "summary.json").write_text(json.dumps(summary, indent=1))
     (out / "table.md").write_text(table(summary))
-    commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO, capture_output=True, text=True).stdout.strip()
-    dirty = bool(subprocess.run(["git", "status", "--porcelain", "--", "python", "configs"], cwd=REPO,
-                                capture_output=True, text=True).stdout.strip())
     cfg_path = Path(cfg["_path"])
     man = {"tool": "orchestration.bench", "ts_utc": ts, "git_commit": commit, "git_dirty_python_configs": dirty,
            "llm_config": str(cfg_path.relative_to(REPO) if cfg_path.is_relative_to(REPO) else cfg_path),

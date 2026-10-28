@@ -249,3 +249,89 @@ def test_sample_fixture_matches_the_schema():
     lines = [json.loads(x) for x in (Path(__file__).parent / "fixtures" / "hypotheses_sample.jsonl").read_text().splitlines()]
     assert lines and all(keys <= set(x) for x in lines)
     assert {x["event"] for x in lines} >= {"created", "status"}
+
+
+# --- the VL proposer (F2.4, D319): async one replan behind, validated, logged, seed fallback ---
+
+def _vl_layer(tmp: Path, script):
+    from test_nebius_provider import FakeOpenAI
+    from orchestration.hypotheses import VLProposer
+    from orchestration.providers import load_config, make_provider
+    from orchestration.providers.ledger import Ledger
+    cfg = load_config(REPO / "configs" / "llm" / "nemotron.yaml")
+    fake = FakeOpenAI(script)
+    prov = make_provider("nebius", cfg, client=fake, ledger=Ledger(tmp / "spend.jsonl", cfg["prices_usd_per_mtok"]),
+                         purpose="hypothesis")
+    ddir = tmp / "run" / "decisions"
+    ddir.mkdir(parents=True)
+    return HypothesisLayer(ddir, {**HCFG, **{k: v for k, v in cfg["hypothesis"].items() if k not in HCFG}},
+                           VLProposer(prov, cfg["hypothesis"])), fake
+
+
+def _proposal(entries):
+    from test_nebius_provider import synth
+    return synth([("propose_hypotheses", {"hypotheses": entries})], model="nvidia/Nemotron-3.5-Super-VL", pt=3000, ct=120)
+
+
+def _step(hl, r):
+    s = hl.before_turn(r)
+    if hl.vl.pending is not None:
+        hl.vl.pending.result(timeout=10)   # the test waits; live, the next replan simply finds it done (or not)
+    return s
+
+
+def test_vl_proposals_fold_in_one_replan_later(tmp_path):
+    reqs = corpus_requests(tmp_path, 3)
+    good = [{"agent": 0, "candidate": 1, "predicts": "dead_end", "rationale": "walls close in on the map", "prior": 0.7},
+            {"agent": 1, "candidate": 0, "predicts": "passage", "rationale": "open corridor in the keyframe"},
+            {"agent": 1, "candidate": 99, "predicts": "passage", "rationale": "x"},
+            {"agent": 0, "candidate": 0, "predicts": "maybe", "rationale": "x"}]
+    hl, fake = _vl_layer(tmp_path, [_proposal(good), _proposal([]), _proposal([])])
+    s0 = _step(hl, reqs[0])
+    assert s0["new"] and all(hl.h[h]["provenance"]["source"] == "seed" for h in s0["new"])   # nothing landed yet
+    s1 = _step(hl, reqs[1])
+    assert all(hl.h[h]["provenance"]["source"] == "vl" for h in s1["new"])   # VL landed: no seeding this replan
+    landed = s1["vl"][0]["created"]
+    assert len(landed) == 2
+    h = hl.h[landed[0]]
+    vl = h["provenance"] if h["provenance"]["source"] == "vl" else h["provenance"]["vl"]   # created or annotated
+    assert vl["seen_decision_id"] == reqs[0]["decision_id"] and h["predicts"] in ("passage", "dead_end")
+    assert h["orchestrator"]["model"] == "nvidia/Nemotron-3.5-Super-VL" and h["status"] in V.OPEN + V.TERMINAL
+    ev = [json.loads(x) for x in (tmp_path / "run" / "hypotheses.jsonl").read_text().splitlines()]
+    calls = [e for e in ev if e["event"] == "vl_call"]
+    assert calls[0]["valid"] == 2 and len(calls[0]["invalid"]) == 2 and len(calls[0]["created_or_annotated"]) == 2
+    assert {i["why"] for i in calls[0]["invalid"]} == {"candidate out of range", "predicts must be passage|dead_end"}
+    assert calls[0]["orchestrator"]["tokens_in"] == 3000 and calls[0]["orchestrator"]["latency_ms"] is not None
+    s2 = _step(hl, reqs[2])                                   # the second VL answer proposed nothing: seed fills in
+    assert any(e["event"] == "vl_call" and e["outcome"] == "zero_valid" for e in
+               (json.loads(x) for x in (tmp_path / "run" / "hypotheses.jsonl").read_text().splitlines()))
+    assert all(hl.h[h]["provenance"]["source"] == "seed" for h in s2["new"])
+    # the VL request: the runtime's own images and the planner's candidates, nothing else
+    sent = fake.sent[0]
+    assert sent["model"] == "nvidia/Nemotron-3.5-Super-VL" and sent["max_tokens"] <= 2048
+    assert sent["extra_body"] == {"reasoning_effort": "none"}
+    text = sent["messages"][1]["content"][0]["text"]
+    assert "a0:c0" in text and "centroid" in text
+
+
+def test_vl_failure_is_logged_and_seeded(tmp_path):
+    from test_nebius_provider import _conn_error
+    reqs = corpus_requests(tmp_path, 2)
+    hl, _ = _vl_layer(tmp_path, [_conn_error(), _proposal([])])
+    _step(hl, reqs[0])
+    s1 = _step(hl, reqs[1])
+    assert s1["new"] and all(hl.h[h]["provenance"]["source"] == "seed" for h in s1["new"])
+    call = next(json.loads(x) for x in (tmp_path / "run" / "hypotheses.jsonl").read_text().splitlines()
+                if json.loads(x)["event"] == "vl_call")
+    assert call["outcome"] == "error" and "APIConnectionError" in call["reason"]
+
+
+def test_vl_hit_rate_counts_terminal_outcomes_only(tmp_path):
+    hl = _layer(tmp_path)
+    mk = lambda st, pred, src="vl": {"status": st, "predicts": pred, "provenance": {"source": src}}   # noqa: E731
+    hl.h = {"a": mk("confirmed", "passage"), "b": mk("refuted", "passage"), "c": mk("refuted", "dead_end"),
+            "d": mk("expired", "passage"), "e": mk("supported", "dead_end"), "f": mk("confirmed", None, "seed"),
+            "g": mk("refuted", "dead_end", "seed")}   # a seed annotated by the VL counts
+    assert hl.hit_rate() == {"n": 4, "hits": 3, "rate": 0.75}
+    del hl.h["g"]
+    assert hl.hit_rate() == {"n": 3, "hits": 2, "rate": 0.667}
