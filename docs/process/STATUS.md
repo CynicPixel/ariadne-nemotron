@@ -1,5 +1,40 @@
 # Status (newest first; times IST)
 
+## 2026-10-29 02:50 — F3.1–F3.4 done on fv/rebrand (FV); F3.5 waits on FP's hypotheses fixture
+
+- **F3.1 scrub gate (`tools/scrub/`, D330):**
+  - `check.sh` is clean on `fv/rebrand`. It checks the denylist (text, raw bytes, PDF text), that the deleted directories stay
+    deleted, that no living file references them, and secrets (token shapes plus the literal local key values).
+  - `--release` blocks `TODO(FM)` in `README.md` and `docs/submission/`. `--history` scans all refs.
+  - `apply.sh` is idempotent: the second run printed nothing.
+  - Negative tests: every planted fake secret and the planted denylist string were caught. In a throwaway repo, a committed-then-deleted
+    key was caught by `--history`.
+- **History secret scan (before G3):** all refs, 790 commits, 931,328 added lines: **no secrets.**
+- **F3.2:** deleted `submission/`, `docs/report/`, `infra/cool/` and `python/video/scenes/` (81 files, including the old film).
+  The recovery point is `7496988`.
+- **F3.3:**
+  - `console_site.py`: the paper copy is removed and the paper link is `None`. It was edited, never run.
+  - `runs_index.py` and `./ariadne runs` now write `build/runs/runs.csv`.
+  - `ariadne`: the hosted-frontend note is removed; `cloud cool` is removed; `usage()` now reads up to the rule line.
+  - `demo.py`: no default film URL, no `/paper` route, and the GitHub link points to this fork.
+  - `make_gifs.py` writes to `build/video/gifs`.
+  - The account ID stays in the launchers, per FM.
+- **F3.4:**
+  - `README.md` is rewritten. It covers Nemotron on Token Factory (model IDs from D301), a Mermaid architecture diagram,
+    inherited results labelled pre-Nemotron, and a zero-credential quick start.
+  - Five `TODO(FM)` markers remain: the video, the bench's pick, the confirmation of FP's implementation, the F4 results, and
+    the Nemotron run and bench commands.
+  - `evaluation/runs/README.md` adds the lineage note.
+  - The wider architecture, algorithms and validation phrasing is limited to the denylisted lines (D330: bare COOL stays).
+- **Tests:** `python/tests/console/test_demo.py` 8/8 passed (scratch venv). `py_compile` and `bash -n` pass on every touched
+  script, and the three mission YAMLs parse.
+  - `ariadne_live.cpp` changed only in a comment, so it is not rebuilt here.
+- **Video:** the beat audit is in `docs/process/VIDEO_NOTES.md`.
+  - Beat 11's footer carries the old competition's name, and beat 8 is Bedrock-labelled.
+  - Rendered frames are not yet checked.
+  - `docs/me/Ariadne_thumbnail.png` carries a faint third-party stock-logo watermark and is kept out of the README.
+- **Open:** F3.5 waits on FP's `hypotheses.jsonl` fixture and the schema section.
+
 ## 2026-10-29 02:30 — G0 passed (FM): live Nemotron on Token Factory
 
 - **Key:** the user's key is in place (outside the repo, 0600).

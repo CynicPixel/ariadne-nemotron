@@ -5980,3 +5980,70 @@ listing, never from docs. The user's credit is USD 59 and any overrun is billed 
 - **Super 120B**, with `chat_template_kwargs.enable_thinking:false`: HTTP 200 in 1.24 s, 456 / 80, reasoning_tokens 0, one well-formed `assign` call.
 - **Caveat:** VL's free-text reason cited "a0's current position", which the prompt never gave. Model rationales are
   untrusted text and are never evidence; this is consistent with the invariant that the model never certifies geometry.
+
+## 2026-10-29 — D330: scrub scope — what the denylist holds, what it deliberately leaves, how it survives syncs
+
+**What.** `tools/scrub/` (FV) puts D300's tree-only scrub into practice.
+- **`check.sh` is the pre-push gate.** It scans tracked and untracked (not ignored) files:
+  - the old-competition denylist (the list itself is in `check.sh`), over text, raw bytes and PDF text;
+  - the four deleted directories;
+  - living files that still point into those directories;
+  - secrets: token shapes, plus the literal values in `~/.config/ariadne/nebius.env` and `~/.aws/credentials`.
+- **`check.sh --history`** scans every commit on every ref for secrets.
+- **`check.sh --release`** also fails on `TODO(FM)` markers in `README.md` and `docs/submission/`.
+- **`apply.sh`** re-applies the scrub after a merge:
+  - it removes the deleted directories again if a merge brings them back;
+  - it runs `rules.sed` over tracked text files;
+  - it is idempotent: a second run changes nothing.
+
+**Scope (agreed with FM, 29 Oct ~02:30 IST).**
+- **Denied:** the old competition's name and its Devpost slug; its sponsor tagline; the two award names (the OpenCV-on-Arm library award and the
+  agentic-vision award, including the title-case award name on its own); the live-judging mode name; the old hosted-console domain
+  and its AWS profile name; the old film's YouTube ID.
+- **Deliberately not denied:**
+  - bare `COOL`, the OpenCV-on-Arm benchmark and protocol, which stays as a technical artifact in the architecture and decision docs;
+  - the bare word "competition", which `algorithms.md` uses for DARPA SubT;
+  - AWS and Bedrock, which are honest compute and the legacy provider;
+  - the AWS account ID: it is not a secret, it is in history anyway, and the launchers that use it are the live path.
+- **Deleted from the tree:**
+  - `submission/` (including the old film `submission/video/ariadne_final_1080p60.mp4`);
+  - `docs/report/`;
+  - `infra/cool/`;
+  - `python/video/scenes/`.
+
+  Their last commit is `7496988`, so `git show 7496988:<path>` recovers any of them; video work restores them under `build/`, never
+  into the tree. `python/video/{ariadne_video,tools}` stay.
+- **Fixing method:**
+  - Lines that upstream also owns are fixed only through `rules.sed`, so a sync that takes upstream's side is re-scrubbed by
+    `apply.sh`. This covers:
+    - the `live_*demo*_v1.yaml` headers;
+    - the `ariadne_live.cpp` option comment;
+    - `architecture.md`, `live-runtime.md`, `docs/README.md`, `build.md` and `evaluation/README.md`;
+    - the `ariadne` CLI, `console_site.py`, `runs_index.py`, `spinup.sh` and `make_gifs.py`;
+    - the single-line parts of `demo.py`.
+  - Hand edits are limited to:
+    - the rewritten `README.md`;
+    - the removed `/api/demo/paper` route in `demo.py` (a regression is caught by the dangling-reference check).
+- **Exemptions:**
+  - From the dangling-reference check: `evaluation/runs/`, `docs/decisions.md` and `docs/process/`. They are historical records
+    that cite paths as they were.
+  - From `rules.sed`: `evaluation/runs/` is never rewritten, because run evidence is byte for byte.
+  - From the denylist and secret scans: nothing except `tools/scrub/` itself.
+
+**Why.**
+- A hand fix in a shared file is lost the first time a sync conflict is resolved to upstream's side, while a rule is re-applied.
+- Denying bare `COOL` would erase about 70 accurate technical references for no identity gain.
+- Rewriting run files would break their evidentiary value.
+
+**Verified [VERIFIED], 29 Oct 02:45 IST.**
+- `check.sh` is clean on `fv/rebrand`, and `apply.sh` is idempotent: a second run printed nothing.
+- **Negative tests:**
+  - Planted shapes were all caught, and secrets print as `file:line` only. The planted items were an untracked fake AWS key ID, a
+    fake key assignment, a fake literal from a temporary `HOME` credential file, and the old video ID.
+  - In a throwaway repo, a key committed and then deleted was caught by `--history`.
+- **First-draft bugs found and fixed:**
+  - Case-insensitive token matching flagged base64 PNGs in 10 gate `report.html` files, so token shapes are now case-sensitive.
+  - The history scan relied on `gawk`, which is not installed, and passed silently. It now uses `grep`, and any pipeline failure
+    is a FAIL.
+- **Full history scan:** all refs, 790 commits, 931,328 added lines: **no secrets**.
+- `python/tests/console/test_demo.py` 8/8 passed.
