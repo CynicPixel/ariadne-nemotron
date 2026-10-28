@@ -15,7 +15,7 @@ prices_usd_per_mtok:
   nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B: {in: 0.06, out: 0.24}
   nvidia/Nemotron-3-Ultra-550b-a55b:     {in: 1.00, out: 3.00}   # not in the bench without FM approval
 
-budget:                              # D312 (FM requirement): USD 59 credit, overrun billed to the user's bank
+budget:                              # D312 (FM requirement): the account has a limited credit budget
   ledger: ~/.config/ariadne/nebius_spend.jsonl   # env NEBIUS_SPEND_LEDGER overrides (the container: /spend/...)
   usd_hard: 40.0                     # at/above: every call refused (BudgetExceeded -> classical fallback in C++)
   usd_warn: 25.0                     # at/above: one warning per process

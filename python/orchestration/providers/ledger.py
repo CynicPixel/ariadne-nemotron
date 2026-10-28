@@ -1,4 +1,4 @@
-"""The Token Factory spend ledger and its hard cap (D312; FM requirement 2026-10-29: USD 59 of credit, overrun billed).
+"""The Token Factory spend ledger and its hard cap (D312; FM requirement 2026-10-29: the account has a limited credit budget).
 
 One append-only JSON line per model call: ts_utc, model, prompt/completion tokens, est_usd, purpose. Before every call
 the ledger is summed; at or above usd_hard the call is refused with BudgetExceeded, which the orchestrator turns into

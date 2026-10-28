@@ -5971,7 +5971,7 @@ Model IDs are taken from `GET /v1/models?verbose=true` on 2026-10-29 02:29 IST, 
 Image tokens are billed as prompt tokens (`pricing.image` is 0). A 262-token map image was observed.
 
 **Why.** The ID casing differs between sources (`Nemotron-3_5-Lightning`, lower-case `nemotron-3-super`), so config takes IDs from this
-listing, never from docs. The user's credit is USD 59 and any overrun is billed to their bank. The provider therefore enforces a ledger cap
+listing, never from docs. The account has a limited credit budget, so the provider enforces a ledger cap
 (hard USD 40, warn USD 25) using these prices.
 
 **Verified [VERIFIED].** Artifacts are in `evaluation/runs/nemotron/g0_20261028T205925Z/` (`models_verbose.json`, `g0_calls.json`, `g0_call.py`); the key appears in none of them.
@@ -6000,7 +6000,7 @@ listing, never from docs. The user's credit is USD 59 and any overrun is billed 
 **Why.**
 - The model may only choose among candidates the planner proved reachable. Hypothesis status must come from observed
   occupancy alone (CLAUDE.md §1).
-- The user's Token Factory credit is USD 59, and any overrun is billed to their bank account.
+- The Token Factory account has a limited credit budget.
 
 **Verified.** Design only at the time of writing. Evidence (tests, fixtures, runs) is appended per item as it lands.
 
