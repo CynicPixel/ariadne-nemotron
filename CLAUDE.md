@@ -95,7 +95,7 @@ background. GPU launches are cleared with M first. The user approves any AWS spe
 - **Git:**
   - Commit only your own work, naming files explicitly. **No Co-Authored-By trailer**, ever.
   - Push only to `origin` (CynicPixel/ariadne-nemotron); never to `upstream`.
-  - Never touch GitHub CynicPixel/Ariadne, and never redeploy `ariadne.cynicpixel.xyz`.
+  - Never touch GitHub CynicPixel/Ariadne, and never redeploy the upstream hosted console site (`infra/scripts/console_site.py`).
 - **Manifests or it didn't happen:** every run records git commit, image digests, scene/seed,
   configs and the LLM provider/model IDs.
 - **Honesty tags:** `[VERIFIED]`, `[ASSUMPTION]`, `[PROXY]`, `[UNVERIFIED]`. No guessed API
