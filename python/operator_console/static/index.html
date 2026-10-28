@@ -75,13 +75,30 @@
   .card.hyp > a { grid-row: 1 / span 3; grid-column: 2; }
   .card.hyp img { width: 72px; height: 72px; object-fit: cover; border-radius: 3px; background: var(--unknown); display: block; }
   .card.hyp .path { font-family: var(--mono); font-size: .7rem; color: var(--muted); }
+  .card.hyp .contra { color: var(--warn); font-weight: 600; }
+  /* ?view=record (fork F6): one 1080p frame holds the map, the Hypotheses panel with both model lines, approvals and the
+     timeline. Layout only: the same data, nothing hidden that changes what the frame claims. */
+  body.record main { grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr) minmax(0, .85fr);
+    grid-template-rows: auto minmax(0, 1fr); grid-template-areas: "map hyp op" "map hyp tl";
+    height: calc(100vh - 52px); padding-top: 10px; padding-bottom: 10px; gap: 10px; }
+  body.record main > div { display: contents; }
+  body.record main > section:first-child { grid-area: map; overflow: hidden; }
+  body.record #hyp { grid-area: hyp; overflow-y: auto; }
+  body.record #hyp-list { max-height: none; overflow: visible; }
+  body.record #operator { grid-area: op; overflow-y: auto; max-height: 34vh; }
+  body.record section:has(#timeline) { grid-area: tl; overflow: hidden; display: flex; flex-direction: column; }
+  body.record #timeline { max-height: none; flex: 1; }
+  body.record section[aria-label="Comms"], body.record section[aria-label="Agent cameras"], body.record section:has(#gauges),
+  body.record #dirform, body.record #directives, body.record #proposals, body.record #operator > .note,
+  body.record #operator h3:not(:first-of-type) { display: none; }
+  body.record section { padding: 10px 12px; }
   #hyp-model { font-family: var(--mono); font-size: .75rem; overflow-wrap: anywhere; }
   @media (prefers-reduced-motion: reduce) { .bar > i { transition: none; } }
 </style>
 </head>
 <body>
 <div class="strip" role="status">
-  <h1>Ariadne console · stub <a href="/splat" style="font-size:0.55em; font-weight:normal; margin-left:12px">splat view →</a></h1>
+  <h1>Ariadne console <a href="/splat" style="font-size:0.55em; font-weight:normal; margin-left:12px">splat view →</a></h1>
   <span>mission time <span class="v" id="t">0.0</span> s</span>
   <span id="merged" class="pill wait">agent 1 not merged</span>
   <span id="route" class="pill wait">no valid egress route</span>
@@ -193,6 +210,7 @@
 </main>
 <script>
 const $ = (id) => document.getElementById(id);
+if (new URLSearchParams(location.search).get("view") === "record") document.body.classList.add("record");   // fork F6
 const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
 let lastFrame = null, meta, ws, slab = null, frameCache = null, maxBytes = {};
 // Smooth motion (entity interpolation): every pose sample is kept with its sim time; the page draws at a render clock
@@ -653,12 +671,16 @@ function renderHyp(d) {
       ${img ? `<a href="${esc(img)}" target="_blank" rel="noopener"><img src="${esc(img)}" alt="decision map for ${esc(h.hypothesis_id)}" loading="lazy"></a>` : ""}
       <div class="why">${esc(h.claim)}</div>
       ${h.evidence_goal ? `<div class="why">evidence goal: ${esc(h.evidence_goal)}</div>` : ""}
+      ${h.contradicted ? `<div class="why contra">contradicted since ${fmtS(h.contradicted.since_t_s)}: the revised map now reads
+        ${esc(h.contradicted.verdict)} (${esc(h.contradicted.reason)}); the ${esc(st)} status stands as first concluded</div>` : ""}
       <div class="note">targeted by: ${tg}${h.verifier?.reason ? ` · verifier: ${esc(h.verifier.reason)}` : ""}</div>
       <div class="path">${path}</div></div>`;
   }).join("");
 }
 async function hypPoll() {
-  try { const r = await fetch("/api/hypotheses"); if (r.ok) renderHyp(await r.json()); } catch { /* the next poll retries */ }
+  // As of the page's own mission clock: in a replay of a finished run the panel progresses with the replay.
+  const t = lastFrame && typeof lastFrame.t_s === "number" ? `?t=${lastFrame.t_s}` : "";
+  try { const r = await fetch(`/api/hypotheses${t}`); if (r.ok) renderHyp(await r.json()); } catch { /* the next poll retries */ }
 }
 setInterval(hypPoll, 2000);
 hypPoll();

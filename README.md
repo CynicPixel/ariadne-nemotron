@@ -77,7 +77,9 @@ What the model is allowed to do, and what it is not:
   pick before the mover acts. Egress routes come only from the planner (`MissionPlanner::Route`), at responder clearance (0.40 m).
 - **Hypothesis status comes only from the verifier.** `python/orchestration/verifier.py` reads the observed occupancy slab and
   moves a hypothesis between `unresolved`, `supported`, `confirmed`, `refuted` and `expired`. The model's text never changes a status,
-  and neither does simulator ground truth.
+  and neither does simulator ground truth. *Confirmed* means confirmed on the map at that time: the shared map keeps being revised,
+  a later revision can contradict a settled hypothesis, and the console shows when it does (the status itself stays as first
+  concluded).
 - **No ground truth in any prompt.** The model sees what the robots observed: keyframes, and the occupancy map they built.
 - **Spend is capped.** An append-only ledger prices every call from the config and refuses all calls at USD 40 (warning at 25);
   the robots then continue on the classical chooser ([D312](docs/decisions.md)).

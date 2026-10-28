@@ -29,7 +29,8 @@ What the model never does:
 - **It never invents a goal.** A C++ gate accepts only the planner's own candidates, each used exactly once, and holds risky ones
   for a human.
 - **It never decides a hypothesis.** A deterministic verifier sets status from the occupancy the robots observed: unresolved,
-  supported, confirmed, refuted or expired.
+  supported, confirmed, refuted or expired. Confirmed means confirmed on the map at that time: later map revisions can contradict
+  it, and the operator console shows when they do.
 - **It never computes a route.** Routes come from the planner.
 - **It never sees simulator ground truth.**
 

@@ -153,3 +153,49 @@ def test_real_g2_run_layout(tmp_path, monkeypatch):
     vl = next(e for e in reversed(events) if e["event"] == "vl_call")
     assert d["vl"]["model"] == vl["orchestrator"]["model"] == "nvidia/Nemotron-3.5-Super-VL"
     assert d["vl"]["latency_s"] == vl["orchestrator"]["latency_ms"] / 1000
+
+
+@pytest.fixture
+def g2(tmp_path, monkeypatch):
+    run = tmp_path / "live-20261028T214744Z-b93e"
+    shutil.copytree(G2, run, ignore=shutil.ignore_patterns("README.md"))
+    monkeypatch.delenv("ARIADNE_HYPOTHESES", raising=False)
+    monkeypatch.setenv("ARIADNE_LIVE", f"{run}:/nonexistent/scene")
+    app = FastAPI()
+    app.include_router(router)
+    return run, TestClient(app)
+
+
+def test_contradiction_surfaced_status_kept(g2):
+    """G2: h001 was confirmed, then the map revised and the verifier disagreed on every replan from 40 s (older runs log
+    one contradiction per replan). The status stays confirmed; the card shows since when and why."""
+    _, c = g2
+    h = next(h for h in c.get("/api/hypotheses").json()["hypotheses"] if h["hypothesis_id"] == "h001")
+    assert h["status"] == "confirmed"
+    assert h["contradicted"] == {"since_t_s": 40, "verdict": "refuted",
+                                 "reason": "observed obstacles close every crossing at 0.40 m clearance (unknown treated as free)"}
+    assert [s["status"] for s in h["history"]][-1] == "confirmed"      # a contradiction is not a status change
+
+
+def test_contradiction_cleared(g2):
+    run, c = g2
+    with open(run / "hypotheses.jsonl", "a") as f:
+        f.write(json.dumps({"sim_t_s": 100, "event": "contradiction_cleared", "hypothesis_id": "h001", "agent_id": 0,
+                            "status": "confirmed", "status_source": "none", "provenance": {}}) + "\n")
+    h = next(h for h in c.get("/api/hypotheses").json()["hypotheses"] if h["hypothesis_id"] == "h001")
+    assert h["contradicted"] is None and h["status"] == "confirmed"
+
+
+def test_panel_as_of_mission_time(g2):
+    """?t= (the page's own mission clock): a console replaying a finished run shows the panel as it stood then."""
+    _, c = g2
+    early = c.get("/api/hypotheses", params={"t": 39}).json()
+    h001 = next(h for h in early["hypotheses"] if h["hypothesis_id"] == "h001")
+    assert h001["contradicted"] is None and h001["status"] == "confirmed"
+    assert all(ch["sim_t_s"] <= 39 for ch in early["changes"])
+    assert early["decision"] is None                          # the fixture's trace starts at 90 s
+    assert early["vl"]["sim_t_s"] <= 39
+    at90 = c.get("/api/hypotheses", params={"t": 90}).json()["decision"]
+    assert (at90["decision_id"], at90["source"]) == ("t90000ms", "orchestrator")
+    assert c.get("/api/hypotheses", params={"t": 95}).json()["decision"]["source"] == "fallback"
+    assert c.get("/api/hypotheses", params={"t": 0}).json()["hypotheses"] == []
