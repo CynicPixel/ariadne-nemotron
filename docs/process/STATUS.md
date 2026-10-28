@@ -1,5 +1,29 @@
 # Status (newest first; times IST)
 
+## 2026-10-29 02:58 — F3.5 console Hypotheses panel; F6 drafts and cue batch 1 (FV)
+
+- **F3.5 (2b01a4e, fv/rebrand):**
+  - `GET /api/hypotheses` is a fork-owned router, `python/operator_console/hypotheses_panel.py`. `server.py` gains only the include line.
+  - It returns:
+    - the last record per `hypothesis_id` from `<run>/hypotheses.jsonl`;
+    - status counts, the status history (with `status_source`) and targeting;
+    - the newest decision's provider, model, latency and tokens, from the runtime `trace.jsonl` (`choice.answer.orchestrator`).
+  - `GET /api/hypotheses/file` serves provenance images from inside the run directory only.
+  - It is read-only and computes no status. A half-written line is tolerated. `ARIADNE_HYPOTHESES=<file>` shows a recorded file.
+  - In `index.html`: status chips, cards with the claim, evidence goal, verifier reason, targeting, status path and map thumbnail.
+    The panel polls every 2 s and stays hidden until a file exists.
+- **Tests:** `tests/console` 19 passed, 1 skipped. Of these, 7 are new, run against FP's fixture: newest record per id; history
+  where only the verifier changes status; the decision block; image serving with traversal refused; a tolerant reader; recorded-file mode.
+  - Page JS passes `node --check`. `renderHyp` was run in Node on the API's real output for the fixture: h001 and h005 confirmed,
+    h008 refuted at 55 s, h005 targeted by agent 0.
+  - **Not viewed in a real browser** [UNVERIFIED layout]. That is first possible on a live run.
+- **Fixture note for FP:** `make_hypotheses_sample.py` says the fixture keeps a still-open hypothesis, but all three end settled.
+  The targeted one (h005) ends confirmed.
+- **F6:**
+  - `docs/submission/VIDEO_SCRIPT.md` (2:45; beat D is 60 s of live footage) and `DEVPOST.md` (measured facts only; numbers as TODO(FM)).
+  - `narration_cues.jsonl` batch 1: 17 cues, 280 words, running on Kaggle (FM).
+  - The old film's frame check is in `docs/process/VIDEO_NOTES.md`: subtitles are burned in, so cuts get a mask (FM: OK).
+
 ## 2026-10-29 02:50 — F3.1–F3.4 done on fv/rebrand (FV); F3.5 waits on FP's hypotheses fixture
 
 - **F3.1 scrub gate (`tools/scrub/`, D330):**

@@ -48,7 +48,7 @@
 | F1.1–F1.6 | Nemotron provider, bench, tests | partial | provider + ledger + live.sh merged 7be5b02; 22/22 in `ariadne-orchestrator:nemotron-1`; bench and G1 live run pending | FP |
 | F2.1–F2.7 | Evidence-seeking layer | not started | — | FP |
 | F3.1–F3.4 | Scrub, deletions, references, README + lineage | done (fv/rebrand, not merged) | D330; STATUS 2026-10-29 02:50 | FV |
-| F3.5 | Console hypotheses panel | blocked (FP fixture) | needs `hypotheses.jsonl` fixture + schema | FV |
+| F3.5 | Console hypotheses panel | done (fv/rebrand); browser layout unverified | 2b01a4e; STATUS 2026-10-29 02:58; tests/console 19 passed | FV |
 | F4.1–F4.2 | Matched evaluation | not started | — | FP/FM |
 | F5.1–F5.3 | Last sync + GPU recording | not started | — | FM |
-| F6.1–F6.3 | Video, Devpost, submit | not started | — | FV/FM/U |
+| F6.1–F6.3 | Video, Devpost, submit | partial | script, DEVPOST draft, cue batch 1 (17); beat D footage, F4 numbers, video link open | FV/FM/U |
