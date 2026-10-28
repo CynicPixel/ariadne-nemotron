@@ -1,39 +1,37 @@
-"""The Bedrock orchestrator in the CHOOSE step (design agentic.md §0, D156-D160; arch §25).
+"""The chooser's orchestrator in the CHOOSE step (design agentic.md §0, D156-D160; arch §25; fork D310-D317).
 
-  python -m orchestration.orchestrator --socket RUN/chooser.sock --dir RUN/decisions [--max-calls 10]
+  python -m orchestration.orchestrator --socket RUN/chooser.sock --dir RUN/decisions [--llm-config configs/llm/nemotron.yaml]
 
 ariadne_live (chooser: llm) connects to SOCKET and sends one JSON line per replan: a joint decision request for both
-agents. For each, this process writes the request where the MCP server can read it, runs a Bedrock `converse` tool
-loop whose tools are the MCP server's (stdio, mcp 2.3.0), and answers with one JSON line:
-  {"decision_id", "assignments": [{agent, candidate (-1 = hold), reason, approval_id}], "orchestrator": {...}}
+agents. For each, this process writes the request where the MCP server can read it, runs one provider's tool loop
+whose tools are the MCP server's (stdio, mcp 2.3.0), and answers with one JSON line:
+  {"decision_id", "assignments": [{agent, candidate (-1 = hold), reason, approval_id[, hypothesis_id, evidence_goal]}],
+   "orchestrator": {...}}
 `assignments` is whatever the `assign` tool recorded, or null. ariadne_live validates every assignment again, per
 agent (range, exactly-once, approval for an above-threshold pick) and falls back to the classical choice otherwise.
 
-Models (D84): primary eu.amazon.nova-2-lite-v1:0 (text + image input). On a Bedrock error or throttling (never on a
-"bad" answer) the turn restarts on deepseek.v3.2, which takes TEXT only: a second MCP server with --text-only (no
-observe_image). temperature 0. Region eu-north-1. Credentials: the boto3 chain (instance role on AWS; on the dev host
-live.sh exports the current `aws login` session into the environment). Images are sent to the model as bytes and
-logged as path + sha256, never inline.
+Models (D311): the decision chain in --llm-config (default configs/llm/nemotron.yaml: Nemotron on Nebius Token Factory;
+configs/llm/bedrock.yaml is the inherited Bedrock pair). The next model in the chain runs ONLY when the provider could
+not be reached (its transport errors); a bad or empty answer, or a refused budget (D312), never falls back here: the
+answer is null and the C++ side keeps the classical choice. A text-only model gets a second MCP server with
+--text-only (no observe_image). Images are sent to the model as bytes and logged as path + sha256, never inline.
+Before each turn, with hypotheses enabled, the slab verifier and the hypothesis store update (D315-D317).
 """
 from __future__ import annotations
 
 import argparse
 import asyncio
-import base64
-import hashlib
 import json
 import sys
 import time
 from pathlib import Path
 
-import boto3
-from botocore.config import Config
-from botocore.exceptions import BotoCoreError, ClientError
 from mcp import StdioServerParameters
 from mcp.client.client import Client
 
-PRIMARY = "eu.amazon.nova-2-lite-v1:0"
-FALLBACK = "deepseek.v3.2"
+from .providers import BudgetExceeded, load_config, make_provider
+from .providers.base import new_log
+
 SYSTEM = (
     "You direct a team of search agents exploring a dark, partially collapsed building, mapped only from their stereo "
     "cameras. Each turn you assign each agent its next exploration target among candidates a deterministic planner "
@@ -60,91 +58,47 @@ def mcp_params(ddir: Path, text_only: bool) -> StdioServerParameters:
                                  args=["-m", "orchestration.mcp_server", str(ddir)] + (["--text-only"] if text_only else []))
 
 
-def tool_config(tools) -> dict:
-    return {"tools": [{"toolSpec": {"name": t.name, "description": t.description or "",
-                                    "inputSchema": {"json": t.input_schema}}} for t in tools],
-            "toolChoice": {"any": {}}}
+class Chooser:
+    """What one orchestrator process holds: the decision dir, the MCP clients by kind ("multimodal" | "text"), the
+    providers by name, the decision chain, each (provider, kind)'s tool list in that provider's format, and the
+    hypothesis layer (None when disabled)."""
+
+    def __init__(self, ddir: Path, mcps: dict, providers: dict, chain: list, cfgs: dict, max_calls: int, hyp=None):
+        self.ddir, self.mcps, self.providers, self.chain = ddir, mcps, providers, chain
+        self.cfgs, self.max_calls, self.hyp = cfgs, max_calls, hyp
+
+    @staticmethod
+    def kind(spec: dict) -> str:
+        return "multimodal" if spec.get("images") else "text"
 
 
-def to_bedrock(result, req: dict) -> tuple[list, str, list]:
-    """MCP tool result -> Bedrock toolResult content, a short text for the trace, and image log entries."""
-    content, text, images = [], [], []
-    for c in result.content:
-        if getattr(c, "type", "") == "image":
-            raw = base64.b64decode(c.data)
-            fmt = c.mime_type.split("/")[-1]
-            content.append({"image": {"format": fmt, "source": {"bytes": raw}}})
-            images.append({"sha256": hashlib.sha256(raw).hexdigest(), "bytes": len(raw), "format": fmt})
-        else:
-            content.append({"text": c.text})
-            text.append(c.text)
-    if not content:
-        content.append({"text": ""})
-    return content, "".join(text), images
-
-
-async def run_turn(req: dict, ddir: Path, mcp: Client, tools_cfg: dict, br, model: str, max_calls: int,
-                   log: dict) -> bool:
-    """One Bedrock conversation; True if `assign` recorded a choice. Raises ClientError/BotoCoreError upward."""
+async def decide(req: dict, ch: Chooser) -> dict:
     did = req["decision_id"]
-    msgs = [{"role": "user", "content": [{"text": (
-        f"decision_id={did}. Mission time {req['t_s']:.1f} s. Agents to assign: "
-        f"{[a['agent'] for a in req['agents']]}. Inspect, then assign.")}]}]
-    while log["calls"] < max_calls:
-        resp = await asyncio.to_thread(br.converse, modelId=model, system=[{"text": SYSTEM}], messages=msgs,
-                                       toolConfig=tools_cfg, inferenceConfig={"temperature": 0.0, "maxTokens": 600})
-        log["calls"] += 1
-        log["model"] = model
-        u = resp.get("usage", {})
-        log["input_tokens"] += u.get("inputTokens", 0)
-        log["output_tokens"] += u.get("outputTokens", 0)
-        log["stop"] = resp.get("stopReason")
-        out = resp["output"]["message"]
-        msgs.append(out)
-        for c in out["content"]:
-            if "text" in c and c["text"].strip():
-                log["model_text"].append(c["text"][:400])
-        uses = [c["toolUse"] for c in out["content"] if "toolUse" in c]
-        if not uses:
-            msgs.append({"role": "user", "content": [{"text": "Call a tool; finish with assign."}]})
-            continue
-        results = []
-        for tu in uses:
-            args = dict(tu.get("input") or {})
-            args["decision_id"] = did            # this request's id, whatever the model passed
-            entry = {"tool": tu["name"], "input": {k: v for k, v in args.items() if k != "decision_id"}}
-            try:
-                r = await mcp.call_tool(tu["name"], args)
-                content, text, images = to_bedrock(r, req)
-                status = "error" if r.is_error else "success"
-            except Exception as e:  # noqa: BLE001 - every tool failure goes back to the model and into the trace
-                content, text, images, status = [{"text": f"{type(e).__name__}: {e}"}], f"{type(e).__name__}: {e}", [], "error"
-            entry.update(status=status, result=text[:600], images=images)
-            log["tool_calls"].append(entry)
-            results.append({"toolResult": {"toolUseId": tu["toolUseId"], "status": status, "content": content}})
-        msgs.append({"role": "user", "content": results})
-        if (ddir / f"{did}.choice.json").exists():
-            return True
-    return (ddir / f"{did}.choice.json").exists()
-
-
-async def decide(req: dict, ddir: Path, mcps: dict, cfgs: dict, br, max_calls: int) -> dict:
-    did = req["decision_id"]
+    ddir = ch.ddir
     (ddir / f"{did}.json").write_text(json.dumps(req))
-    log = {"model": None, "fallback_used": False, "calls": 0, "latency_s": 0.0, "input_tokens": 0,
-           "output_tokens": 0, "tool_calls": [], "model_text": [], "stop": None, "errors": []}
+    log = new_log()
     t0 = time.time()
-    for model, kind in ((PRIMARY, "multimodal"), (FALLBACK, "text")):
+    if ch.hyp is not None:
         try:
-            if await run_turn(req, ddir, mcps[kind], cfgs[kind], br, model, max_calls, log):
-                break
-            if model == PRIMARY:
-                break   # the model answered but never assigned: not a Bedrock failure, no fallback (C++ falls back)
-        except (ClientError, BotoCoreError) as e:
-            log["errors"].append(f"{model}: {type(e).__name__}: {str(e)[:200]}")
-            log["fallback_used"] = model == PRIMARY
+            log["hypotheses"] = ch.hyp.before_turn(req)
+        except Exception as e:  # noqa: BLE001 - the evidence layer never blocks a decision
+            log["errors"].append(f"hypotheses: {type(e).__name__}: {str(e)[:200]}")
+    for i, spec in enumerate(ch.chain):
+        prov = ch.providers[spec["provider"]]
+        kind = ch.kind(spec)
+        try:
+            await prov.run_turn(req, ddir, ch.mcps[kind], ch.cfgs[(spec["provider"], kind)], spec, SYSTEM,
+                                ch.max_calls, log)
+            break   # answered (with or without assign): a bad answer is not a transport failure, no fallback
+        except BudgetExceeded as e:
+            log["errors"].append("budget_exceeded")
+            log["budget"] = str(e)[:200]
+            break
+        except prov.transport_errors as e:
+            log["errors"].append(f"{spec['model']}: {type(e).__name__}: {str(e)[:200]}")
+            log["fallback_used"] = i + 1 < len(ch.chain)
         except Exception as e:  # noqa: BLE001 - e.g. expired credentials (RuntimeError): answer now, no fallback
-            log["errors"].append(f"{model}: {type(e).__name__}: {str(e)[:200]}")
+            log["errors"].append(f"{spec['model']}: {type(e).__name__}: {str(e)[:200]}")
             break
     log["latency_s"] = round(time.time() - t0, 3)
     choice = ddir / f"{did}.choice.json"
@@ -155,7 +109,7 @@ async def decide(req: dict, ddir: Path, mcps: dict, cfgs: dict, br, max_calls: i
 LINE_LIMIT = 1 << 24   # bytes per request/answer line; the request grows with the map (16 MiB >> any map seen)
 
 
-def make_handler(ddir, mcps, cfgs, br, max_calls):
+def make_handler(ch: Chooser):
     """One handler per runtime connection. Run 4 (live-20261023T073340Z-e971): the request crossed asyncio's default
     64 KiB line limit at t=55 s; readline raised LimitOverrunError OUTSIDE the per-line guard, the handler died
     unobserved and the runtime segfaulted on the dropped socket. The server now reads with LINE_LIMIT, and a stream
@@ -167,7 +121,7 @@ def make_handler(ddir, mcps, cfgs, br, max_calls):
 
         async def one(line: bytes) -> None:
             try:
-                ans = await decide(json.loads(line), ddir, mcps, cfgs, br, max_calls)
+                ans = await decide(json.loads(line), ch)
             except Exception as e:  # noqa: BLE001 - the runtime must get an answer, not wait out its timeout
                 did = json.loads(line).get("decision_id", "?") if line.strip().startswith(b"{") else "?"
                 ans = {"decision_id": did, "assignments": None,
@@ -192,15 +146,22 @@ def make_handler(ddir, mcps, cfgs, br, max_calls):
 async def serve(args) -> None:
     ddir = Path(args.dir)
     ddir.mkdir(parents=True, exist_ok=True)
-    br = boto3.client("bedrock-runtime", region_name="eu-north-1",
-                      config=Config(retries={"max_attempts": 2, "mode": "standard"}, read_timeout=60))
+    cfg = load_config(args.llm_config)
+    chain = cfg["decision"]["chain"]
+    providers = {n: make_provider(n, cfg) for n in dict.fromkeys(s["provider"] for s in chain)}
+    hyp = None
+    if cfg.get("hypothesis", {}).get("enabled"):
+        from .hypotheses import HypothesisLayer
+        hyp = HypothesisLayer(ddir, cfg["hypothesis"])
     async with Client(mcp_params(ddir, False)) as m_mm, Client(mcp_params(ddir, True)) as m_tx:
         mcps = {"multimodal": m_mm, "text": m_tx}
-        cfgs = {k: tool_config((await c.list_tools()).tools) for k, c in mcps.items()}
-        (ddir / "tools.json").write_text(json.dumps(cfgs, indent=1))
-        srv = await asyncio.start_unix_server(make_handler(ddir, mcps, cfgs, br, args.max_calls),
-                                              path=args.socket, limit=LINE_LIMIT)
-        print(f"orchestrator: tools {[t['toolSpec']['name'] for t in cfgs['multimodal']['tools']]}; "
+        tools = {k: (await c.list_tools()).tools for k, c in mcps.items()}
+        cfgs = {(n, k): p.tool_config(tools[k]) for n, p in providers.items() for k in mcps}
+        (ddir / "tools.json").write_text(json.dumps({f"{n}/{k}": v for (n, k), v in cfgs.items()}, indent=1))
+        ch = Chooser(ddir, mcps, providers, chain, cfgs, args.max_calls or cfg["decision"].get("max_calls", 10), hyp)
+        srv = await asyncio.start_unix_server(make_handler(ch), path=args.socket, limit=LINE_LIMIT)
+        print(f"orchestrator: config {cfg['_path']}; chain {[s['provider'] + ':' + s['model'] for s in chain]}; "
+              f"hypotheses {'on' if hyp else 'off'}; tools {[t.name for t in tools['multimodal']]}; "
               f"listening on {args.socket}", flush=True)
         async with srv:
             await srv.serve_forever()
@@ -210,7 +171,8 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--socket", required=True)
     ap.add_argument("--dir", required=True)
-    ap.add_argument("--max-calls", type=int, default=10)
+    ap.add_argument("--max-calls", type=int, default=0, help="tool-loop turns per decision (0 = the config's)")
+    ap.add_argument("--llm-config", default=None, help="configs/llm/*.yaml (default configs/llm/nemotron.yaml)")
     asyncio.run(serve(ap.parse_args()))
 
 

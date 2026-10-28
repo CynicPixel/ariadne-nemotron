@@ -1,0 +1,105 @@
+{
+ "request": {
+  "model": "nvidia/Nemotron-3.5-Super-VL",
+  "max_tokens": 300,
+  "temperature": 0.0,
+  "tools": [
+   {
+    "type": "function",
+    "function": {
+     "name": "assign",
+     "description": "Assign one exploration candidate to agent 0.",
+     "parameters": {
+      "type": "object",
+      "properties": {
+       "candidate": {
+        "type": "integer"
+       },
+       "reason": {
+        "type": "string"
+       }
+      },
+      "required": [
+       "candidate",
+       "reason"
+      ]
+     }
+    }
+   }
+  ],
+  "tool_choice": "auto",
+  "extra_body": {
+   "chat_template_kwargs": {
+    "enable_thinking": false
+   }
+  }
+ },
+ "n_messages": 2,
+ "latency_s": 0.788,
+ "response": {
+  "id": "chatcmpl-8f7e301b79ca1842",
+  "choices": [
+   {
+    "finish_reason": "tool_calls",
+    "index": 0,
+    "logprobs": null,
+    "message": {
+     "content": null,
+     "refusal": null,
+     "role": "assistant",
+     "annotations": null,
+     "audio": null,
+     "function_call": null,
+     "tool_calls": [
+      {
+       "id": "chatcmpl-tool-bb1da33d034ecfa4",
+       "function": {
+        "arguments": "{\"candidate\": 0, \"reason\": \"c0 is closer (2.1 m vs 6.3 m), offers more unknown cells (40 vs 12), and has lower risk (0.1 vs 0.4), making it the best exploration target for agent 0.\"}",
+        "name": "assign"
+       },
+       "type": "function"
+      }
+     ],
+     "reasoning_content": null
+    },
+    "stop_reason": null,
+    "token_ids": null,
+    "routed_experts": null
+   }
+  ],
+  "created": 1793221758,
+  "model": "nvidia/Nemotron-3.5-Super-VL",
+  "object": "chat.completion",
+  "metadata": null,
+  "moderation": null,
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.1.dev1+g1bed5fc81-tp2-9705eecb",
+  "usage": {
+   "completion_tokens": 85,
+   "prompt_tokens": 364,
+   "total_tokens": 449,
+   "completion_tokens_details": {
+    "accepted_prediction_tokens": null,
+    "audio_tokens": null,
+    "reasoning_tokens": 0,
+    "rejected_prediction_tokens": null,
+    "text_tokens": null
+   },
+   "prompt_tokens_details": {
+    "audio_tokens": null,
+    "cache_write_tokens": null,
+    "cached_tokens": 0,
+    "image_tokens": null,
+    "text_tokens": null,
+    "created_cache_tokens": 0,
+    "multimodal_tokens": null
+   }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+ }
+}

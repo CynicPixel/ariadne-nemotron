@@ -1,0 +1,56 @@
+# The chooser's LLM chain on Nebius Token Factory (D310-D313). Model IDs are D301's, exactly as GET /v1/models served
+# them on 2026-10-29 (note the casing and Lightning's underscore). Never put a model ID in code; never put the key here.
+# Passed as: python -m orchestration.orchestrator --llm-config configs/llm/nemotron.yaml
+nebius:
+  base_url: https://api.tokenfactory.nebius.com/v1   # D301 [VERIFIED G0]
+  api_key_env: NEBIUS_API_KEY        # set by docker --env-file ~/.config/ariadne/nebius.env; never read by scripts
+  timeout_s: 45.0                    # per HTTP call; well under live llm.timeout_s 120 (approval may block 60 s)
+  max_retries: 1                     # the SDK's own retry on 429/5xx/connection, then the chain's next model
+
+# $/1M tokens, D301 (pricing page via FM). Images bill as prompt tokens. An unlisted model is priced at the max here.
+prices_usd_per_mtok:
+  nvidia/Nemotron-3.5-Super-VL:          {in: 0.30, out: 0.90}
+  nvidia/nemotron-3-super-120b-a12b:     {in: 0.30, out: 0.90}
+  nvidia/Nemotron-3_5-Lightning:         {in: 0.06, out: 0.24}
+  nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B: {in: 0.06, out: 0.24}
+  nvidia/Nemotron-3-Ultra-550b-a55b:     {in: 1.00, out: 3.00}   # not in the bench without FM approval
+
+budget:                              # D312 (FM requirement): USD 59 credit, overrun billed to the user's bank
+  ledger: ~/.config/ariadne/nebius_spend.jsonl   # env NEBIUS_SPEND_LEDGER overrides (the container: /spend/...)
+  usd_hard: 40.0                     # at/above: every call refused (BudgetExceeded -> classical fallback in C++)
+  usd_warn: 25.0                     # at/above: one warning per process
+
+# Decision tier: one tool loop per replan, reasoning OFF, small output cap. The orchestrator moves to the next entry
+# ONLY on a transport error (connection, timeout, 429, 5xx). images: true pairs the model with the full MCP server
+# (observe_image); text models get --text-only. The bench (orchestration.bench) picks the order; see D318.
+decision:
+  max_calls: 10                      # tool-loop turns per decision
+  chain:
+    - provider: nebius
+      model: nvidia/nemotron-3-super-120b-a12b
+      images: false
+      max_tokens: 512
+      temperature: 0.0
+      extra_body: {chat_template_kwargs: {enable_thinking: false}}   # D301 [VERIFIED G0]: 0 reasoning tokens
+    - provider: nebius
+      model: nvidia/Nemotron-3_5-Lightning
+      images: false
+      max_tokens: 512
+      temperature: 0.0
+      extra_body: {chat_template_kwargs: {enable_thinking: false}}   # [VERIFIED F1 probe]: 0 reasoning tokens
+
+# Hypothesis tier (F2): Super-VL over the map and keyframes, async. May reason, capped at 2k output tokens (FM).
+hypothesis:
+  enabled: true                      # deterministic seeding + the slab verifier (D315, D316); no model call
+  vl_proposer: false                 # F2.4 optional: the VL annotates seeded hypotheses (never sets status)
+  provider: nebius
+  model: nvidia/Nemotron-3.5-Super-VL
+  images: true
+  max_tokens: 2048
+  temperature: 0.0
+  extra_body: {reasoning_effort: none}                               # D301 [VERIFIED G0]
+  seed_top_k: 2                      # per agent, the top-ranked candidates that seed a hypothesis
+  match_radius_m: 1.0                # re-anchor by candidate centroid within this (cluster ids renumber per replan)
+  region_radius_m: 1.5               # verifier disk around the centroid
+  rho_responder_m: 0.40              # invariant 5: egress claims use rho_responder
+  expire_after_replans: 3            # unmatched this many replans while open -> expired

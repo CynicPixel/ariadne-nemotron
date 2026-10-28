@@ -20,10 +20,11 @@
 #                              RuntimeLink in one component container; unpaused here once <run>/link.ready exists
 #   console  ariadne-console   ARIADNE_LIVE=<run>:<scene> uvicorn, 127.0.0.1:${ARIADNE_CONSOLE_PORT:-8080};
 #                              a probe client keeps a WebSocket open so frames are served (and logged) during the run
-#   orch     ariadne-orchestrator  only with `chooser: llm` (agentic.md D156): the Bedrock tool loop + MCP servers,
+#   orch     ariadne-orchestrator  only with `chooser: llm` (agentic.md D156): the LLM tool loop + MCP servers
+#                              (fork D311: model chain from ARIADNE_LLM_CONFIG, default configs/llm/nemotron.yaml),
 #                              listening on <run>/chooser.sock BEFORE the runtime starts (it connects, waiting <= 60 s).
-#                              Credentials: the current session exported to a mode-600 env file that is deleted as
-#                              soon as docker has read it (aws.sh's pattern for Terraform); short-lived, never logged.
+#                              Credentials: Nebius - the key file via docker --env-file only; Bedrock - the AWS
+#                              session re-exported to a mode-700 dir (credential_process); never logged.
 # Render: NVIDIA EGL when the docker NVIDIA runtime exists (the AWS g4dn host), else Mesa llvmpipe (slow; smoke only).
 # Parallelism: the builds use 2 jobs (the dev host crashed above that).
 # ---------------------------------------------------------------------------
@@ -34,7 +35,8 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SIM_IMAGE="${ARIADNE_SIM_IMAGE:-ariadne/sim:dev}"
 CORE_IMAGE="${ARIADNE_CORE_IMAGE:-ariadne/core-dev:dev}"
 CONSOLE_IMAGE="${ARIADNE_CONSOLE_IMAGE:-ariadne-console:1}"
-ORCH_IMAGE="${ARIADNE_ORCH_IMAGE:-ariadne-orchestrator:1}"
+ORCH_IMAGE="${ARIADNE_ORCH_IMAGE:-ariadne-orchestrator:nemotron-1}"
+LLM_CONFIG="${ARIADNE_LLM_CONFIG:-configs/llm/nemotron.yaml}"   # fork D311: the chooser's model chain (repo-relative)
 JOBS="${ARIADNE_BUILD_JOBS:-2}"
 U="$(id -u):$(id -g)"
 log() { printf '[live %s] %s\n' "$(date -u +%H:%M:%S)" "$*" >&2; }
@@ -90,23 +92,38 @@ stop_mine() {
 CRED_DIR="" CRED_PID=""
 start_orchestrator() {   # -> appends its container id; returns once <run>/chooser.sock exists
   local id="$1" run="$2" awscli=(aws)
-  command -v aws >/dev/null || awscli=("$REPO_ROOT/infra/scripts/aws.sh" aws)   # the dev host has no aws install
-  # Credentials (2026-10-23: a one-time export of the session's keys expired ~15 min into a run and the orchestrator
-  # died): the session is re-exported every 4 min into a mode-700 directory; the container reads it through a
-  # credential_process profile, so botocore refreshes before each expiry. Keys never reach a command line or a log.
-  CRED_DIR="$(mktemp -d)"; chmod 700 "$CRED_DIR"
-  if ! "${awscli[@]}" configure export-credentials --format process > "$CRED_DIR/creds.json" 2>/dev/null; then
-    rm -rf "$CRED_DIR"; log "no AWS credentials for Bedrock (infra/scripts/aws.sh login)"; exit 1
+  [ -f "$REPO_ROOT/$LLM_CONFIG" ] || { log "no LLM config $LLM_CONFIG"; exit 1; }
+  local cred=() orch_cmd=(python -m orchestration.orchestrator --socket "/work/$run/chooser.sock" --dir "/work/$run/decisions"
+                          --llm-config "/work/$LLM_CONFIG")
+  if grep -q '^ *- provider: *nebius' "$REPO_ROOT/$LLM_CONFIG"; then
+    # Fork D312/D313: Nemotron on Nebius Token Factory. The key file is handed to docker as --env-file (docker reads
+    # it; it never reaches a command line, a log or the run dir; this script never opens it). The spend ledger is
+    # the host file, bind-mounted alone (never ~/.config/ariadne/, which holds the key): HOME=/tmp in the container
+    # would otherwise give every run a fresh, empty ledger and the hard cap would never fire.
+    local keyf="${ARIADNE_NEBIUS_ENV:-$HOME/.config/ariadne/nebius.env}"
+    local ledger="${NEBIUS_SPEND_LEDGER:-$HOME/.config/ariadne/nebius_spend.jsonl}"
+    [ -f "$keyf" ] || { log "no Nebius key file $keyf (NEBIUS_API_KEY=... , mode 600)"; exit 1; }
+    [ -e "$ledger" ] || { ( umask 077; : >> "$ledger" ); }
+    cred=(--env-file "$keyf" -v "$ledger":/spend/nebius_spend.jsonl -e NEBIUS_SPEND_LEDGER=/spend/nebius_spend.jsonl)
+  else
+    command -v aws >/dev/null || awscli=("$REPO_ROOT/infra/scripts/aws.sh" aws)   # the dev host has no aws install
+    # Credentials (2026-10-23: a one-time export of the session's keys expired ~15 min into a run and the orchestrator
+    # died): the session is re-exported every 4 min into a mode-700 directory; the container reads it through a
+    # credential_process profile, so botocore refreshes before each expiry. Keys never reach a command line or a log.
+    CRED_DIR="$(mktemp -d)"; chmod 700 "$CRED_DIR"
+    if ! "${awscli[@]}" configure export-credentials --format process > "$CRED_DIR/creds.json" 2>/dev/null; then
+      rm -rf "$CRED_DIR"; log "no AWS credentials for Bedrock (infra/scripts/aws.sh login)"; exit 1
+    fi
+    printf '[default]\ncredential_process = cat /creds/creds.json\nregion = %s\n' "${AWS_REGION:-eu-north-1}" > "$CRED_DIR/config"
+    ( while sleep 240; do
+        "${awscli[@]}" configure export-credentials --format process > "$CRED_DIR/creds.tmp" 2>/dev/null \
+          && mv "$CRED_DIR/creds.tmp" "$CRED_DIR/creds.json"
+      done ) &
+    CRED_PID=$!
+    cred=(-e AWS_CONFIG_FILE=/creds/config -v "$CRED_DIR":/creds:ro)
   fi
-  printf '[default]\ncredential_process = cat /creds/creds.json\nregion = %s\n' "${AWS_REGION:-eu-north-1}" > "$CRED_DIR/config"
-  ( while sleep 240; do
-      "${awscli[@]}" configure export-credentials --format process > "$CRED_DIR/creds.tmp" 2>/dev/null \
-        && mv "$CRED_DIR/creds.tmp" "$CRED_DIR/creds.json"
-    done ) &
-  CRED_PID=$!
   CONTAINERS+=("$(docker run -d --name "ariadne-live-$id-orch" --memory=1g --memory-swap=1g -u "$U" -e HOME=/tmp \
-    -e AWS_CONFIG_FILE=/creds/config -v "$CRED_DIR":/creds:ro -v "$REPO_ROOT":/work -w /work/python "$ORCH_IMAGE" \
-    python -m orchestration.orchestrator --socket "/work/$run/chooser.sock" --dir "/work/$run/decisions")")
+    "${cred[@]}" -v "$REPO_ROOT":/work -w /work/python "$ORCH_IMAGE" "${orch_cmd[@]}")")
   orch="${CONTAINERS[-1]}"
   local t0; t0=$(date +%s)
   until [ -S "$REPO_ROOT/$run/chooser.sock" ]; do
@@ -170,6 +187,12 @@ cmd_run() {
     done
     [ ! -f "$REPO_ROOT/${ARIADNE_COLLAB_CONFIG:-configs/collab/collab_live_v1.yaml}" ] || \
       sha256sum "$REPO_ROOT/${ARIADNE_COLLAB_CONFIG:-configs/collab/collab_live_v1.yaml}"
+    if grep -q '^chooser: *llm' "$REPO_ROOT/$live_cfg"; then   # fork D311: the LLM chain this run used
+      cp "$REPO_ROOT/$LLM_CONFIG" "$REPO_ROOT/$run/llm_config.yaml"
+      printf 'source_llm: %s\norchestrator_image: %s %s\n' "$LLM_CONFIG" "$ORCH_IMAGE" \
+        "$(docker image inspect -f '{{.Id}}' "$ORCH_IMAGE" 2>/dev/null || echo missing)"
+      sha256sum "$REPO_ROOT/$run/llm_config.yaml"
+    fi
     for model in .cache/models/eigenplaces_sim_ref/eigenplaces_r50_256_640x360.onnx \
       .cache/models/aliked_lg_sim_ref/aliked_n16_k1024_1280x720.onnx \
       .cache/models/aliked_lg_sim_ref/lightglue_aliked.onnx; do

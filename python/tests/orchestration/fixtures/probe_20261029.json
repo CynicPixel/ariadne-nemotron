@@ -1,0 +1,149 @@
+[
+ {
+  "case": "super_required_thinkoff",
+  "model": "nvidia/nemotron-3-super-120b-a12b",
+  "tool_choice": "required",
+  "extra_body": {
+   "chat_template_kwargs": {
+    "enable_thinking": false
+   }
+  },
+  "ok": true,
+  "latency_s": 1.103,
+  "est_usd": 0.00019260000000000002,
+  "finish": "tool_calls",
+  "prompt_tokens": 438,
+  "completion_tokens": 68,
+  "reasoning_tokens": 0,
+  "think_in_content": false,
+  "content": "",
+  "reasoning_field": false,
+  "tool_calls": [
+   {
+    "name": "assign",
+    "arguments": "{\"candidate\": 0, \"reason\": \"Closer (2.1m vs 6.3m), more unknown cells (40 vs 12), lower risk (0.1 vs 0.4)\"}"
+   }
+  ]
+ },
+ {
+  "case": "lightning_thinkoff",
+  "model": "nvidia/Nemotron-3_5-Lightning",
+  "tool_choice": "auto",
+  "extra_body": {
+   "chat_template_kwargs": {
+    "enable_thinking": false
+   }
+  },
+  "ok": true,
+  "latency_s": 0.661,
+  "est_usd": 5.022e-05,
+  "finish": "tool_calls",
+  "prompt_tokens": 493,
+  "completion_tokens": 86,
+  "reasoning_tokens": 0,
+  "think_in_content": false,
+  "content": "",
+  "reasoning_field": false,
+  "tool_calls": [
+   {
+    "name": "assign",
+    "arguments": "{\"candidate\":0,\"reason\":\"c0 has lower distance (2.1 m vs 6.3 m) and lower risk (0.1 vs 0.4) while offering more unknown cells (40 vs 12), making it the better exploration target for agent 0.\"}"
+   }
+  ]
+ },
+ {
+  "case": "lightning_effort_none",
+  "model": "nvidia/Nemotron-3_5-Lightning",
+  "tool_choice": "auto",
+  "extra_body": {
+   "reasoning_effort": "none"
+  },
+  "ok": true,
+  "latency_s": 0.58,
+  "est_usd": 5.022e-05,
+  "finish": "tool_calls",
+  "prompt_tokens": 493,
+  "completion_tokens": 86,
+  "reasoning_tokens": 0,
+  "think_in_content": false,
+  "content": "",
+  "reasoning_field": false,
+  "tool_calls": [
+   {
+    "name": "assign",
+    "arguments": "{\"candidate\":0,\"reason\":\"c0 has lower distance (2.1 m vs 6.3 m) and lower risk (0.1 vs 0.4) while offering more unknown cells (40 vs 12), making it the better exploration target for agent 0.\"}"
+   }
+  ]
+ },
+ {
+  "case": "nano_thinkoff",
+  "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B",
+  "tool_choice": "auto",
+  "extra_body": {
+   "chat_template_kwargs": {
+    "enable_thinking": false
+   }
+  },
+  "ok": true,
+  "latency_s": 1.284,
+  "est_usd": 3.3119999999999995e-05,
+  "finish": "tool_calls",
+  "prompt_tokens": 364,
+  "completion_tokens": 47,
+  "reasoning_tokens": null,
+  "think_in_content": false,
+  "content": "",
+  "reasoning_field": false,
+  "tool_calls": [
+   {
+    "name": "assign",
+    "arguments": "{\"reason\": \"Higher priority due to closer proximity and lower risk compared to c1\", \"candidate\": 0}"
+   }
+  ]
+ },
+ {
+  "case": "nano_effort_none",
+  "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B",
+  "tool_choice": "auto",
+  "extra_body": {
+   "reasoning_effort": "none"
+  },
+  "ok": true,
+  "latency_s": 0.922,
+  "est_usd": 3.216e-05,
+  "finish": "stop",
+  "prompt_tokens": 364,
+  "completion_tokens": 43,
+  "reasoning_tokens": null,
+  "think_in_content": false,
+  "content": "",
+  "reasoning_field": true,
+  "tool_calls": []
+ },
+ {
+  "case": "vl_thinkoff_text",
+  "model": "nvidia/Nemotron-3.5-Super-VL",
+  "tool_choice": "auto",
+  "extra_body": {
+   "chat_template_kwargs": {
+    "enable_thinking": false
+   }
+  },
+  "ok": true,
+  "latency_s": 0.788,
+  "est_usd": 0.0001857,
+  "finish": "tool_calls",
+  "prompt_tokens": 364,
+  "completion_tokens": 85,
+  "reasoning_tokens": 0,
+  "think_in_content": false,
+  "content": "",
+  "reasoning_field": false,
+  "tool_calls": [
+   {
+    "name": "assign",
+    "arguments": "{\"candidate\": 0, \"reason\": \"c0 is closer (2.1 m vs 6.3 m), offers more unknown cells (40 vs 12), and has lower risk (0.1 vs 0.4), making it the best exploration target for agent 0.\"}"
+   }
+  ]
+ }
+]
