@@ -26,7 +26,8 @@ def new_log() -> dict:
 
 def first_prompt(req: dict) -> str:
     return (f"decision_id={req['decision_id']}. Mission time {req['t_s']:.1f} s. Agents to assign: "
-            f"{[a['agent'] for a in req['agents']]}. Inspect, then assign.")
+            f"{[a['agent'] for a in req['agents']]}. Inspect, then assign. Request everything you need in ONE turn "
+            f"(several tool calls at once), then call assign.")
 
 
 async def call_tool(mcp, name: str, args: dict, did: str) -> tuple[str, str, list[tuple[str, bytes]], dict]:

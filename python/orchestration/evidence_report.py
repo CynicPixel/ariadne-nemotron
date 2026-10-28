@@ -39,10 +39,19 @@ def answer_of(rec: dict) -> dict | None:
     return None
 
 
+def locate(run: Path, name: str) -> Path:
+    """live.sh layout: the orchestrator's files (hypotheses/verifier.jsonl, decisions/) sit in the run dir, the
+    runtime's (trace.jsonl) in its mission subdir <scene_id>-live-<ts>/. Accept either directory."""
+    for p in (run / name, *sorted(run.glob(f"*/{name}")), run.parent / name):
+        if p.exists():
+            return p
+    return run / name
+
+
 def report(run: Path) -> dict:
-    trace = [r for r in jl(run / "trace.jsonl") if "choice" in r]
-    hyp = jl(run / "hypotheses.jsonl")
-    ver = jl(run / "verifier.jsonl")
+    trace = [r for r in jl(locate(run, "trace.jsonl")) if "choice" in r]
+    hyp = jl(locate(run, "hypotheses.jsonl"))
+    ver = jl(locate(run, "verifier.jsonl"))
     by_dec = {}
     for r in trace:
         by_dec[(r["choice"].get("decision_id"), r["agent"])] = r
