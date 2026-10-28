@@ -23,6 +23,10 @@ from pathlib import Path
 from .evidence_report import answer_of, jl, locate, report
 
 
+NO_ANSWER = ("no assignment recorded", "timeout", "malformed answer", "chooser link down", "pending", "expired",
+             "first horizon")
+
+
 def pct(xs, q):
     if not xs:
         return None
@@ -42,13 +46,15 @@ def row(run: Path) -> dict:
     last = [r for r in trace if r["t_s"] == last_t]
     at60 = [r for r in trace if r["t_s"] == 60]
     egress = next((r["t_s"] for r in sorted(trace, key=lambda r: r["t_s"]) if r["vision"].get("egress_found")), None)
-    src, val = {}, {}
+    src, val, noans = {}, {}, {}
     for r in trace:
         s = r["choice"].get("source", "?")
         src[s] = src.get(s, 0) + 1
         v = r["choice"].get("validation")
         if v and v != "ok":
-            val[v] = val.get(v, 0) + 1
+            # no answer at all (timeout, null, malformed, link down) is not a proposal the gate rejected
+            bucket = noans if v.startswith(NO_ANSWER) else val
+            bucket[v] = bucket.get(v, 0) + 1
     # executed picks above the risk threshold without an approval on record (supervisor returns are exempt, as in the gate)
     unsafe = 0
     for r in trace:
@@ -65,7 +71,8 @@ def row(run: Path) -> dict:
            "free_cells_end": last[0]["vision"].get("free_cells"), "occupied_cells_end": last[0]["vision"].get("occupied_cells"),
            "free_cells_60s": at60[0]["vision"].get("free_cells") if at60 else None,
            "egress_found_t_s": egress, "flown_m_end": (last[0].get("planner") or {}).get("flown_m"),
-           "decisions_by_source": src, "proposals_rejected_by_gate": val, "unsafe_actions_executed": unsafe,
+           "decisions_by_source": src, "proposals_rejected_by_gate": val, "no_answer": noans,
+           "unsafe_actions_executed": unsafe,
            "llm_models": sorted({o.get("model") for o in orch if o.get("model")}),
            "llm_calls": sum(o.get("calls") or 0 for o in orch), "llm_latency_p50_s": pct(lat, 0.5),
            "llm_latency_p95_s": pct(lat, 0.95), "llm_input_tokens": sum(o.get("input_tokens") or 0 for o in orch),
@@ -85,7 +92,7 @@ def row(run: Path) -> dict:
 
 def markdown(rows: list[dict]) -> str:
     cols = ["policy", "run", "end_s", "free_cells_60s", "free_cells_end", "egress_found_t_s", "flown_m_end",
-            "decisions_by_source", "proposals_rejected_by_gate", "unsafe_actions_executed", "llm_latency_p50_s", "llm_latency_p95_s",
+            "decisions_by_source", "no_answer", "proposals_rejected_by_gate", "unsafe_actions_executed", "llm_latency_p50_s", "llm_latency_p95_s",
             "llm_input_tokens", "llm_est_usd", "first_verified_resolution_t_s", "chains_complete", "vl_hit_rate"]
     def f(v):
         if v is None:
