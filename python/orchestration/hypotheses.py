@@ -83,7 +83,16 @@ class HypothesisLayer:
             h["verifier"] = {"slab": v.get("_slab"), "slab_t_s": req["t_s"], "verdict": v["verdict"],
                              "reason": v["reason"], "metrics": v["metrics"]}
         if event == "contradiction":
-            self._event(req, h, "contradiction", contradicting_verdict=v["verdict"])
+            # a settled status that the current map disagrees with (G2: observed-free cells turning occupied under
+            # map revisions). Logged once per change of the contradicting verdict, not every replan; surfaced in the
+            # view (`contradicted`) so the model and the console see it. The status itself stays (first resolution).
+            h["contradiction_replans"] = h.get("contradiction_replans", 0) + 1
+            if (h.get("contradicted") or {}).get("verdict") != v["verdict"]:
+                h["contradicted"] = {"since_t_s": req["t_s"], "verdict": v["verdict"], "reason": v["reason"]}
+                self._event(req, h, "contradiction", contradicting_verdict=v["verdict"])
+        elif h["status"] in ("confirmed", "refuted") and h.get("contradicted") and v and v["verdict"] == h["status"]:
+            h["contradicted"] = None   # the map agrees again
+            self._event(req, h, "contradiction_cleared")
         elif event == "status":
             h["status"] = status
             if status in V.TERMINAL:
@@ -255,6 +264,7 @@ class HypothesisLayer:
             "slab": summary["slab"], "verifier_error": summary["error"],
             "hypotheses": [{"hypothesis_id": h["hypothesis_id"], "claim": h["claim"], "status": h["status"],
                             "reason": (h.get("verifier") or {}).get("reason"),
+                            "contradicted": h.get("contradicted"),
                             "anchors": h["anchors"], "centroid_xy_m": h["centroid_xy_m"],
                             "seeded_by_agent": h["agent_id"], "created_t_s": h["created_t_s"],
                             "source": h["provenance"].get("source"), "vl_predicts": h.get("predicts"),

@@ -1,0 +1,38 @@
+# Fork F4 B0 (FM, 2026-10-29): live_llm_v1 with the classical chooser, so the matched evaluation differs from B2/B4
+# in the chooser only (same gate threshold, same answer window). Every other value is live_llm_v1's.
+# The live closed-loop runtime (design live-runtime.md D152-D154). The mapping / frontier / routing values are
+# configs/mission/mission_v1.yaml's (the 1.8 layer, unchanged); these are the live-only knobs.
+name: live_llm_v1_b0
+end_s: 90.0                  # sim seconds: frames stamped later are not consumed; then every agent is told hold()
+lens: false                  # D227 (D41 amendment, 2026-10-24): the read-time synthetic lens
+                             # is OFF in the live runtime; frames stay the clean render, calibration reports D = 0.
+chooser: classical           # F4 B0: the nearest reachable frontier at least min_goal_m away; no LLM call
+command:
+  max_length_m: 3.0          # a follow() is cut here: at <= 0.6 m/s that is ~5 s of motion, one replan period, so
+                             # the next decision always arrives before the agent runs out of path (receding horizon)
+  simplify_eps_cells: 1.0    # cv::approxPolyDP tolerance on the A* cell path; each chord re-checked on the grid
+  face_frontier: true        # the last pose turns to face the chosen cluster's centroid (observe what was approached)
+  min_goal_m: 1.0            # candidates nearer than this are not driven to. Measured 2026-10-23 (first live smoke):
+                             # the nearest cluster is ALWAYS the one under the agent (path 0 m: the unknown band behind
+                             # and beside a 90-degree forward rig), so 1.8's nearest rule, executed, never moves.
+                             # 1.0 m = 2.5 rho_responder: past the agent's own footprint band.
+  # Standoff goals (D153b, after the 30 s acceptance run of 2026-10-23: from t = 10 s every follow ended ON a frontier cell
+  # next to an unseen wall and the mover refused it, 10/10). Goals now lie in KNOWN free space with rho_agent clearance
+  # to anything not observed free, as near the cluster as that allows.
+  escape_m: 0.5              # the agent may leave its own spot through trav_a within this radius (the unseen space
+                             # behind a forward rig makes its own cell unsafe under the conservative rule)
+  max_standoff_m: 2.0        # a cluster with no safe cell within this distance is not a candidate (~2/3 of the
+                             # 2.84 m carving range: the frontier stays inside what one keyframe can map)
+  refused_radius_m: 0.5      # a goal within this of a goal the mover refused (same agent) is not re-chosen
+risk_gate:
+  autonomous_threshold: 0.5  # D158. Above it a choice needs an operator approval (console); never lowered to make it fire
+llm:
+  timeout_s: 120.0           # D163: wall seconds for the orchestrator's answer. request_human_approval may block 60 s
+                             # (the operator's window) plus model latency; agentic.md's 20 s predates that tool
+estimator_processes: true   # D168 (2026-10-23): every gate row runs one estimator process per
+                             # agent; the manifest shows it via the run's recorded live_config.yaml
+lockstep: false              # D165: true = gz paused at every barrier until the commands are applied (ARIADNE_LOCKSTEP=1
+                             # in live.sh sets it in the run's recorded config); false = the world runs free
+reorder:
+  hold_back_ms: 3000         # a timed topic silent for this long stops holding the watermark (logged)
+telemetry_hz: 20.0           # console pose rate, in sim time: every camera frame (the page interpolates between them)

@@ -281,3 +281,23 @@ def test_b2_config_extends_and_turns_hypotheses_off():
     assert b2["hypothesis"]["enabled"] is False
     assert b2["decision"]["chain"] == CFG["decision"]["chain"] and b2["prices_usd_per_mtok"] == PRICES
     assert b2["hypothesis"]["model"] == CFG["hypothesis"]["model"]   # merged, not replaced
+
+
+def test_cut_off_turns_are_dropped_and_stop_after_two(tmp_path):
+    # G2 t120000ms: degenerate output cut at max_tokens, 9x. Now: not re-sent, one terse retry, then stop.
+    junk = "H\n\n\n\n" * 200
+    ans, fake, _ = _run(tmp_path, [synth(content=junk, finish="length"), synth(content=junk, finish="length")],
+                        max_calls=10)
+    o = ans["orchestrator"]
+    assert ans["assignments"] is None and o["calls"] == 2 and not o["fallback_used"]
+    assert any("stopped after 2 cut-off turns" in e for e in o["errors"])
+    second = fake.sent[1]["messages"]
+    assert all(m["role"] != "assistant" for m in second)            # the cut-off turn was never re-sent
+    assert second[-1]["content"].startswith("Your reply was cut off")
+    assert len(o["model_text"][0]) <= 80
+
+
+def test_one_cut_off_turn_then_recovery(tmp_path):
+    asg = [{"agent": 0, "candidate": 0}, {"agent": 1, "candidate": 0}]
+    ans, _, _ = _run(tmp_path, [synth(content="H\n\n", finish="length"), synth([("assign", {"assignments": asg})])])
+    assert ans["assignments"] and ans["orchestrator"]["calls"] == 2
