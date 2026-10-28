@@ -54,11 +54,11 @@ cluttered, cut off from GPS and from reliable radio. A team of small stereo-came
 - hand incident command a 3D Gaussian-splat model of what they saw, and an egress route checked at
   responder width (a gap a robot fits through is not a route for a person).
 
-This fork adds a reasoning layer on **NVIDIA Nemotron, served by Nebius Token Factory**. A vision-language model looks at what the
-robots have mapped and proposes *hypotheses*, such as "this frontier connects to a second exit". The decision model then sends a robot
-to the place that would confirm or refute one. A deterministic verifier settles each hypothesis from the occupancy the robots
-actually observe, never from the model's own words. Plain C++ checks every choice before anything moves, and a human approves
-anything risky.
+This fork makes the robots' next moves *evidence-seeking*, with **NVIDIA Nemotron served by Nebius Token Factory** in the loop. The
+planner's most promising frontiers become open *hypotheses* (for example "this frontier leads to open space a responder can pass").
+On every replan, Nemotron chooses which candidate task each robot takes, and names the hypothesis that task is meant to settle.
+A deterministic verifier then settles each hypothesis from the occupancy the robots actually observe, never from the model's own
+words. Plain C++ checks every choice before anything moves, and a human approves anything risky.
 
 ## Nemotron on Nebius Token Factory
 
@@ -68,8 +68,8 @@ IDs live in `configs/llm/nemotron.yaml`, never in code, and are copied from the 
 
 | tier | model (Token Factory ID) | when it runs | input → output |
 |---|---|---|---|
-| **Hypothesis** | `nvidia/Nemotron-3.5-Super-VL` | asynchronously, off the control path | keyframes and the observed occupancy slab (images) → hypotheses anchored to the planner's cluster and candidate IDs, each with an evidence goal |
-| **Decision** | `nvidia/nemotron-3-super-120b-a12b` or `nvidia/Nemotron-3_5-Lightning`, whichever the bench selects<!-- TODO(FM): the bench's pick and its table path (evaluation/runs/nemotron/bench_<ts>/) --> | on every replan, reasoning off | the planner's candidate set + open hypotheses → one `assign` tool call (candidate index, `hypothesis_id`, `evidence_goal`) |
+| **Decision** | `nvidia/nemotron-3-super-120b-a12b`, then `nvidia/Nemotron-3_5-Lightning` on a transport error<!-- TODO(FM): the bench's pick and order (D318) and its table path evaluation/runs/nemotron/bench_<ts>/ --> | on every replan, reasoning off (`enable_thinking: false`), at most 512 output tokens | the planner's candidate set and the open hypotheses (MCP tools, incl. `list_hypotheses`) → one `assign` tool call: candidate, `hypothesis_id`, `evidence_goal` |
+| **Hypothesis** | seeding: none (deterministic); annotation: `nvidia/Nemotron-3.5-Super-VL`, optional and off by default (`vl_proposer`) | each replan, for the top-ranked candidates of each robot | planner candidates → hypotheses anchored to them (re-associated by centroid). The VL model may annotate a seeded hypothesis from the map and keyframes; it never sets a status. |
 
 What the model is allowed to do, and what it is not:
 - **It chooses; it never certifies.** The decision model picks one of the candidates the deterministic planner produced. The
@@ -79,12 +79,16 @@ What the model is allowed to do, and what it is not:
   moves a hypothesis between `unresolved`, `supported`, `confirmed`, `refuted` and `expired`. The model's text never changes a status,
   and neither does simulator ground truth.
 - **No ground truth in any prompt.** The model sees what the robots observed: keyframes, and the occupancy map they built.
+- **Spend is capped.** An append-only ledger prices every call from the config and refuses all calls at USD 40 (warning at 25);
+  the robots then continue on the classical chooser ([D312](docs/decisions.md)).
 - **Every call is logged.** The run trace's `orchestrator` block records provider, model ID, latency and token counts for each
   call. The [G0 calls](evaluation/runs/nemotron/g0_20261028T205925Z/) are the first live examples.
-- **Failure is visible, not hidden.** A transport error falls back to the classical chooser and is counted. A malformed or
-  out-of-set answer is rejected by the gate and counted separately from actions executed.
+- **Failure is visible, not hidden.** A transport error moves to the next model in the chain, and past the chain to the classical
+  chooser; each step is counted. A malformed or out-of-set answer is rejected by the gate and counted separately from actions
+  executed.
 
-<!-- TODO(FM): confirm this section against FP's implementation (provider, verifier, ledger cap) once F1/F2 merge. -->
+<!-- TODO(FM): confirm the hypothesis/verifier rows against the merged F2 (D314-D317), and state whether vl_proposer was on in
+the recorded runs. -->
 
 ## Architecture
 
@@ -98,13 +102,14 @@ flowchart LR
     C --> M["TSDF → occupancy → ESDF<br/>robot and responder width"]
   end
   subgraph NB["Nebius Token Factory"]
-    H["Nemotron 3.5 Super VL<br/>hypothesis tier (async)"]
     D["Nemotron decision tier<br/>reasoning off"]
+    H["Nemotron 3.5 Super VL<br/>optional annotation"]
   end
   W --> V
   M --> P["Mission planner<br/>frontiers · candidates · egress route"]
-  M -- "occupancy slab + keyframes" --> H
-  H -- "hypotheses (cluster / candidate IDs)" --> S[("hypothesis store")]
+  P -- "top candidates seed hypotheses" --> S[("hypothesis store")]
+  M -. "slab + keyframes" .-> H
+  H -. "annotations, never status" .-> S
   M -- "observed slab" --> VF["Deterministic verifier"]
   VF -- "status" --> S
   P -- "candidate set" --> D
@@ -128,11 +133,11 @@ each row links to its own design document.
 | **Selective collaboration** | `cpp/collaboration/`<br>`cpp/runtime/agent/` | EigenPlaces retrieval, spectral-λ₂ selection under a byte budget, ALIKED + LightGlue + PnP verification, an elected broker, and a radio model with partitions. [collaboration](docs/design/collaboration.md) |
 | **Geometric world model** | `cpp/planning/` | Voxel-hash TSDF → tri-state occupancy → incremental ESDF at robot and responder width (0.40 m); frontiers, traversability, a structural-risk proxy. [volumetric](docs/design/volumetric.md) |
 | **Explore and allocate** | `cpp/planning/mission`<br>`cpp/runtime/live/` | Next-best-view by information gain and event-triggered CBBA produce each robot's feasible candidate tasks. [mission](docs/design/mission.md) |
-| **Evidence-seeking decisions** (this fork) | `python/orchestration/` | Nemotron hypothesis and decision tiers on Token Factory, the hypothesis store and the deterministic verifier, exposed as MCP tools. [design](docs/design/nemotron-evidence-loop.md), [inherited chooser](docs/design/agentic.md) |
+| **Evidence-seeking decisions** (this fork) | `python/orchestration/`<br>`configs/llm/` | The Nemotron provider on Token Factory with its spend ledger, the hypothesis store and the deterministic verifier, exposed as MCP tools. [design](docs/design/nemotron-evidence-loop.md), [inherited chooser](docs/design/agentic.md) |
 | **Validate and execute** | `cpp/runtime/tools/ariadne_live.cpp`<br>`simulator/plugins/kinematic_mover/` | C++ validates every choice; approval-gated actions wait for the operator; the mover refuses any goal outside the ESDF safety envelope. [live runtime](docs/design/live-runtime.md) |
 | **Responder egress** | `cpp/planning/route` | Responder-width lattice, multi-exit D* Lite, replanned as hazards appear. [egress](docs/design/egress.md) |
 | **Gaussian reconstruction** | `python/reconstruction/` | gsplat trains keyframe-anchored submaps on a GPU and moves each when its anchor pose is re-optimised. [reconstruction](docs/design/reconstruction.md) |
-| **Incident-command console** | `python/operator_console/` | The splat scene, egress route, fleet state, byte ledger, operator directives and approvals, and a hypotheses panel. [live runtime](docs/design/live-runtime.md) |
+| **Incident-command console** | `python/operator_console/` | The splat scene, egress route, fleet state, byte ledger, operator directives and approvals; a hypotheses panel is planned. [live runtime](docs/design/live-runtime.md) |
 | **Record and evaluate** | `cpp/runtime/`, `python/analysis/`, `infra/eval/` | MCAP record/replay with digest checks, a manifest for every run, metrics and gates. [evaluation harness](docs/design/evaluation-harness.md) |
 
 ## Results
@@ -159,7 +164,7 @@ These results predate the fork. The agentic row used the earlier Amazon Bedrock 
 | Robust back end | **Certified globally optimal** on **7** public benchmark graphs; PCM→GNC survives up to **90 %** outliers | published (SE-Sync Table 1) · [runs](evaluation/runs/robust-backend/) |
 | Task allocation | CBBA reaches **0.994** of the exact optimum (worst 0.983) | exact oracle · [runs](evaluation/runs/planning/allocation_replay/) |
 | Egress | **12/12** responder-width routes valid against ground truth; incremental D* Lite equals a fresh search on 180 obstacle-flip rounds | ground truth · [runs](evaluation/runs/egress/) |
-| Agentic loop (Bedrock era) | **80/80** Bedrock decisions validated, **0/80** approval-gated picks, the mover refused 3 unsafe goals | [run](evaluation/runs/live-agentic/final_stack_e2e/) |
+| Agentic loop (Bedrock era) | 200 s, 2 robots: **80** LLM decisions, 0 answer timeouts; every decision offered an approval-gated option and **0/80** took it; the mover refused **3** unsafe goals | [run](evaluation/runs/live-agentic/final_stack_e2e/20261026T000432Z/) |
 | Reconstruction | Gaussian splat on a g4dn GPU: **2.59 M** Gaussians from 3 robots; held-out PSNR **24.36 dB** | [runs](evaluation/runs/reconstruction/) |
 | Arm64 | Native Graviton4 build passes **708/708** C++ tests | [run](evaluation/runs/arm64/20261024T100530Z-cpuarm-602802/) |
 
@@ -168,7 +173,8 @@ What does not hold up, and why: [docs/results/index.md](docs/results/index.md) (
 
 ## Quick start
 
-Everything except the Nemotron tier runs without credentials.
+Build, tests, the replay gate and classical live runs need no cloud credentials: the gate replays a committed recording and
+`infra/scripts/models.sh` fetches model weights from their public upstream sources.<!-- TODO(FM): confirm on a fresh clone (H8). -->
 
 ```bash
 ./ariadne build                        # pinned images: OpenCV 5 base, core (+ full C++ suite), simulator, orchestrator
@@ -178,11 +184,19 @@ Everything except the Nemotron tier runs without credentials.
 ./ariadne replay <run> <scene>         # replay twice, compare digests
 ```
 
-With Nemotron: put your Token Factory key in `~/.config/ariadne/nebius.env` (mode 0600, outside the repository). It is passed to the
-orchestrator container at run time only and never written to a run directory.
+With Nemotron in the loop:
 
-<!-- TODO(FM): the exact live command with the Nemotron provider (live.sh start_orchestrator --env-file, F1.4) and the
-zero-credential bench replay (python -m orchestration.bench over the recorded corpus, F1.5). -->
+```bash
+install -m 600 /dev/null ~/.config/ariadne/nebius.env  # then add one line: NEBIUS_API_KEY=<your Token Factory key>
+ARIADNE_LIVE_CONFIG=configs/mission/live_llm_v1.yaml ./ariadne run maze_short 6 200
+```
+
+`live_llm_v1` sets `chooser: llm`. The orchestrator then reads its model chain, prices and spend cap from
+`configs/llm/nemotron.yaml` (override with `ARIADNE_LLM_CONFIG`). The key reaches the orchestrator container only through
+`docker --env-file`; no script reads it, and it is never written to a run directory. Spend is appended to
+`~/.config/ariadne/nebius_spend.jsonl`.
+
+<!-- TODO(FM): the zero-credential bench replay (python -m orchestration.bench over the recorded corpus, D318). -->
 
 [docs/build.md](docs/build.md) has every command, the pinned dependencies and the repository layout.
 

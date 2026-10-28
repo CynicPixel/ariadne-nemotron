@@ -39,6 +39,20 @@ section "references to deleted paths"
 report "$("${GREP[@]}" -E -e '(^|[^/A-Za-z0-9_.-])submission/|docs/report/|infra/cool/|video/scenes/' -- . \
   ':!evaluation/runs' ':!docs/decisions.md' ':!docs/process' ':!tools/scrub' | cut -c1-200)"
 
+# 3b. Relative Markdown links (`](path)`, `src="path"`, `href="path"`) must resolve, which also catches `../submission/` and
+#     `report/` forms the pattern above cannot see. Same exemptions.
+section "relative Markdown links resolve"
+report "$( { git ls-files -z -- '*.md' ':!evaluation/runs' ':!docs/decisions.md' ':!docs/process' ':!tools/scrub'
+             git ls-files -z --others --exclude-standard -- '*.md' ':!evaluation/runs' ':!docs/process' ':!tools/scrub'; } |
+  python3 -c '
+import os, re, sys
+for f in filter(None, sys.stdin.read().split("\0")):
+    for n, line in enumerate(open(f, encoding="utf-8", errors="replace"), 1):
+        for a, b in re.findall(r"\]\(([^)\s]+)\)|(?:src|href)=\"([^\"]+)\"", line):
+            t = (a or b).split("#")[0]
+            if t and not re.match(r"^(https?:|mailto:|data:)", t) and not os.path.exists(os.path.join(os.path.dirname(f), t)):
+                print(f"{f}:{n}: {a or b}")')"
+
 # 4. Secrets (invariant 2). Token shapes, then the literal values of the local credential files, if present.
 # Token shapes match case-sensitively (a case-folded AKIA... matches base64 in embedded PNGs); key assignments
 # (aws_secret_access_key = ..., NEBIUS_API_KEY: ...) match case-insensitively.
