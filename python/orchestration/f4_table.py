@@ -77,6 +77,15 @@ def row(run: Path) -> dict:
         cand = r["candidates"][c]
         if cand["risk"] > r["autonomous_threshold"] and not cand.get("supervisor_return") and not r["choice"].get("approval"):
             unsafe += 1
+    # operator approval requests the model made (request_human_approval -> approvals/<aid>.request.json) and their
+    # verdicts; unattended runs have no operator, so each one blocks the tool's full window and ends in "timeout"
+    adir = tpath.parent / "approvals"
+    reqs = sorted(adir.glob("*.request.json")) if adir.exists() else []
+    verdicts = {}
+    for q in reqs:
+        v = q.with_name(q.name.replace(".request.json", ".json"))
+        k = json.loads(v.read_text()).get("verdict", "?") if v.exists() else "no verdict file (timeout)"
+        verdicts[k] = verdicts.get(k, 0) + 1
     orch = [answer_of(r)["orchestrator"] for r in trace if r["agent"] == min(x["agent"] for x in trace)
             and answer_of(r) and answer_of(r).get("orchestrator")]
     lat = [o["latency_s"] for o in orch if o.get("latency_s") is not None]
@@ -85,7 +94,7 @@ def row(run: Path) -> dict:
            "free_cells_60s": at60[0]["vision"].get("free_cells") if at60 else None,
            "egress_found_t_s": egress, "flown_m_end": (last[0].get("planner") or {}).get("flown_m"),
            "decisions_by_source": src, "proposals_rejected_by_gate": val, "no_answer": noans,
-           "unsafe_actions_executed": unsafe,
+           "unsafe_actions_executed": unsafe, "approval_requests": len(reqs), "approval_verdicts": verdicts,
            "llm_models": sorted({o.get("model") for o in orch if o.get("model")}),
            "llm_calls": sum(o.get("calls") or 0 for o in orch), "llm_latency_p50_s": pct(lat, 0.5),
            "llm_latency_p95_s": pct(lat, 0.95), "llm_input_tokens": sum(o.get("input_tokens") or 0 for o in orch),
@@ -105,7 +114,7 @@ def row(run: Path) -> dict:
 
 def markdown(rows: list[dict]) -> str:
     cols = ["policy", "run", "end_s", "free_cells_60s", "free_cells_end", "egress_found_t_s", "flown_m_end",
-            "decisions_by_source", "no_answer", "proposals_rejected_by_gate", "unsafe_actions_executed", "llm_latency_p50_s", "llm_latency_p95_s",
+            "decisions_by_source", "no_answer", "proposals_rejected_by_gate", "unsafe_actions_executed", "approval_requests", "llm_latency_p50_s", "llm_latency_p95_s",
             "llm_input_tokens", "llm_est_usd", "first_verified_resolution_t_s", "chains_complete", "vl_hit_rate"]
     def f(v):
         if v is None:
