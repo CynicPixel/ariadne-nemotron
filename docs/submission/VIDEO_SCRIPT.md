@@ -38,8 +38,8 @@ queues it). Spoken text spells numbers out. Beat sources and their branding audi
 - C2: That is the job we gave to NVIDIA Nemotron, running on Nebius Token Factory.
 
 **D Live loop** (live, 60 s; the narration covers about 45 s and the rest plays clean)
-- D1: The planner proposes candidate goals. Its most promising frontiers become open hypotheses: does this gap lead somewhere a
-  person could follow?
+- D1: The planner proposes candidate goals. Nemotron's vision model looks at the robots' map and camera frames, and turns them
+  into hypotheses: does this gap lead somewhere a person could follow?
 - D2: On every replan, Nemotron reads the candidates and the open hypotheses through tool calls, and assigns each robot a goal.
   It can name the hypothesis that goal should test.
 - D3: On screen: the Nemotron model that answered, and how long it took.
@@ -48,6 +48,13 @@ queues it). Spoken text spells numbers out. Beat sources and their branding audi
 - D5 *(if the take shows a status change)*: The robot drives in, and new observations come back. The verifier, not the model,
   decides: this one is refuted. *(Use "supported" or "confirmed" if that is what the take shows.)*
 - D6 *(if the next decision differs)*: And the next decision changes with it.
+
+  Draft wording for a refutation, modelled on G1's h010 (`evaluation/runs/nemotron/g1_live-20261028T212942Z-2eda/`): Lightning
+  targeted it five times, the robot drove about 2.5 m, the occupied cells in the verifier disk rose from 59 to 284, and at 60 s it
+  was refuted. In the same replan, the robot was sent the other way. Use these only if the recorded take shows the same:
+  - D5r: This robot went to test one. As it got closer, the walls filled in, and the verifier refuted it: no gap wide enough
+    for a responder.
+  - D6r: In that same replan, Nemotron sent the robot the other way.
 
 **E What never comes from the model** (live + diagram)
 - E1: Three things never come from the model.

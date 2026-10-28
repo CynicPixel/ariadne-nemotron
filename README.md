@@ -54,9 +54,9 @@ cluttered, cut off from GPS and from reliable radio. A team of small stereo-came
 - hand incident command a 3D Gaussian-splat model of what they saw, and an egress route checked at
   responder width (a gap a robot fits through is not a route for a person).
 
-This fork makes the robots' next moves *evidence-seeking*, with **NVIDIA Nemotron served by Nebius Token Factory** in the loop. The
-planner's most promising frontiers become open *hypotheses* (for example "this frontier leads to open space a responder can pass").
-On every replan, Nemotron chooses which candidate task each robot takes, and can name the hypothesis that task is meant to test.
+This fork makes the robots' next moves *evidence-seeking*, with **NVIDIA Nemotron served by Nebius Token Factory** in the loop. Nemotron's
+vision model looks at the map the robots built and their camera keyframes, and proposes *hypotheses* about the planner's candidate
+goals (for example "this frontier opens onto a passage a responder can use"). On every replan, Nemotron chooses which candidate task each robot takes, and can name the hypothesis that task is meant to test.
 A deterministic verifier then settles each hypothesis from the occupancy the robots actually observe, never from the model's own
 words. Plain C++ checks every choice before anything moves, and a human approves anything risky.
 
@@ -68,8 +68,8 @@ IDs live in `configs/llm/nemotron.yaml`, never in code, and are copied from the 
 
 | tier | model (Token Factory ID) | when it runs | input → output |
 |---|---|---|---|
-| **Decision** | `nvidia/nemotron-3-super-120b-a12b`, then `nvidia/Nemotron-3_5-Lightning` on a transport error<!-- TODO(FM): the bench's pick and order (D318) and its table path evaluation/runs/nemotron/bench_<ts>/ --> | on every replan, reasoning off (`enable_thinking: false`), at most 512 output tokens | the planner's candidate set and the open hypotheses (MCP tools, incl. `list_hypotheses`) → one `assign` tool call: candidate, `hypothesis_id`, `evidence_goal` |
-| **Hypothesis** | seeding: none (deterministic); annotation: `nvidia/Nemotron-3.5-Super-VL`, optional and off by default (`vl_proposer`) | each replan, for the top-ranked candidates of each robot | planner candidates → hypotheses anchored to them (re-associated by centroid). The VL model may annotate a seeded hypothesis from the map and keyframes; it never sets a status. |
+| **Decision** | `nvidia/Nemotron-3_5-Lightning`, the [bench](evaluation/runs/nemotron/bench_20261028T211611Z/)'s pick ([D319](docs/decisions.md)); `nvidia/nemotron-3-super-120b-a12b` only on a transport error | on every replan, reasoning off (`enable_thinking: false`), at most 512 output tokens | the planner's candidate set and the open hypotheses (MCP tools, incl. `list_hypotheses`) → one `assign` tool call: candidate, `hypothesis_id`, `evidence_goal` |
+| **Hypothesis** | `nvidia/Nemotron-3.5-Super-VL` (`vl_proposer: true`); deterministic seeding from the planner's top candidates is the fallback | asynchronously on each replan, off the decision path | the runtime's own map render, the robots' keyframes and the planner's candidates → at most 4 hypotheses through a `propose_hypotheses` tool call, each anchored to a planner candidate (re-associated by centroid). It never sets a status. |
 
 What the model is allowed to do, and what it is not:
 - **It chooses; it never certifies.** The decision model picks one of the candidates the deterministic planner produced. The
@@ -82,13 +82,11 @@ What the model is allowed to do, and what it is not:
 - **Spend is capped.** An append-only ledger prices every call from the config and refuses all calls at USD 40 (warning at 25);
   the robots then continue on the classical chooser ([D312](docs/decisions.md)).
 - **Every call is logged.** The run trace's `orchestrator` block records provider, model ID, latency and token counts for each
-  call. The [G0 calls](evaluation/runs/nemotron/g0_20261028T205925Z/) are the first live examples.
+  call. The [G0 calls](evaluation/runs/nemotron/g0_20261028T205925Z/) are the first live examples; the
+  [G1 run report](evaluation/runs/nemotron/g1_live-20261028T212942Z-2eda/) walks one hypothesis from proposal to refutation.
 - **Failure is visible, not hidden.** A transport error moves to the next model in the chain, and past the chain to the classical
   chooser; each step is counted. A malformed or out-of-set answer is rejected by the gate and counted separately from actions
   executed.
-
-<!-- TODO(FM): confirm the hypothesis/verifier rows against the merged F2 (D314-D317), and state whether vl_proposer was on in
-the recorded runs. -->
 
 ## Architecture
 
@@ -103,13 +101,14 @@ flowchart LR
   end
   subgraph NB["Nebius Token Factory"]
     D["Nemotron decision tier<br/>reasoning off"]
-    H["Nemotron 3.5 Super VL<br/>optional annotation"]
+    H["Nemotron 3.5 Super VL<br/>hypothesis proposer (async)"]
   end
   W --> V
   M --> P["Mission planner<br/>frontiers · candidates · egress route"]
-  P -- "top candidates seed hypotheses" --> S[("hypothesis store")]
-  M -. "slab + keyframes" .-> H
-  H -. "annotations, never status" .-> S
+  M -- "map render + keyframes" --> H
+  P -- "candidates" --> H
+  H -- "hypotheses (anchored to candidates)" --> S[("hypothesis store")]
+  P -. "seeding fallback" .-> S
   M -- "observed slab" --> VF["Deterministic verifier"]
   VF -- "status" --> S
   P -- "candidate set" --> D

@@ -5,7 +5,7 @@
 {"id": "B3", "beat": "B", "spoken": "The estimation, mapping and planning are our own code, and every number we show links to a recorded run.", "take": "B3"}
 {"id": "C1", "beat": "C", "spoken": "But a map is not a plan. Which opening should a robot check next, and why?", "take": "C1"}
 {"id": "C2", "beat": "C", "spoken": "That is the job we gave to NVIDIA Nemotron, running on Nebius Token Factory.", "take": "C2"}
-{"id": "D1", "beat": "D", "spoken": "The planner proposes candidate goals. Its most promising frontiers become open hypotheses: does this gap lead somewhere a person could follow?", "take": "D1"}
+{"id": "D1", "beat": "D", "spoken": "The planner proposes candidate goals. Nemotron's vision model looks at the robots' map and camera frames, and turns them into hypotheses: does this gap lead somewhere a person could follow?", "take": "D1"}
 {"id": "D2", "beat": "D", "spoken": "On every replan, Nemotron reads the candidates and the open hypotheses through tool calls, and assigns each robot a goal. It can name the hypothesis that goal should test.", "take": "D2"}
 {"id": "D3", "beat": "D", "spoken": "On screen: the Nemotron model that answered, and how long it took.", "take": "D3"}
 {"id": "D4", "beat": "D", "spoken": "That choice is only a proposal. A plain C plus plus gate checks it is one of the planner's own candidates, used exactly once, and anything risky waits for a person to approve it.", "take": "D4"}
