@@ -1,0 +1,17 @@
+{"id": "A1", "beat": "A", "spoken": "A building has collapsed. The lights are out, there is no G P S, and radios barely reach through the walls.", "take": "A1"}
+{"id": "A2", "beat": "A", "spoken": "Before anyone goes in, a team of small robots does.", "take": "A2"}
+{"id": "B1", "beat": "B", "spoken": "Each robot builds its own map from two cameras and a motion sensor.", "take": "B1"}
+{"id": "B2", "beat": "B", "spoken": "They share only what is worth the bytes, and they refuse look-alike places that would tear the shared map apart.", "take": "B2"}
+{"id": "B3", "beat": "B", "spoken": "All of it is built from scratch, and every number we show links to a recorded run.", "take": "B3"}
+{"id": "C1", "beat": "C", "spoken": "But a map is not a plan. Which opening should a robot check next, and why?", "take": "C1"}
+{"id": "C2", "beat": "C", "spoken": "That is the job we gave to NVIDIA Nemotron, running on Nebius Token Factory.", "take": "C2"}
+{"id": "D1", "beat": "D", "spoken": "The planner proposes candidate goals. Its most promising frontiers become open hypotheses: does this gap lead somewhere a person could follow?", "take": "D1"}
+{"id": "D2", "beat": "D", "spoken": "On every replan, Nemotron reads the candidates and the open hypotheses through tool calls, and assigns each robot a goal, naming the hypothesis that goal should settle.", "take": "D2"}
+{"id": "D3", "beat": "D", "spoken": "Here is the model it used, and how long it took.", "take": "D3"}
+{"id": "D4", "beat": "D", "spoken": "That choice is only a proposal. A plain C plus plus gate checks it is one of the planner's own candidates, used exactly once, and anything risky waits for a person to approve it.", "take": "D4"}
+{"id": "E1", "beat": "E", "spoken": "Three things never come from the model.", "take": "E1"}
+{"id": "E2", "beat": "E", "spoken": "A hypothesis's status comes from what the robots actually observed. Escape routes come from the planner, checked at forty centimetres, the width of a responder. And spending has a hard cap.", "take": "E2"}
+{"id": "E3", "beat": "E", "spoken": "If the model fails, the robots carry on with the classical planner.", "take": "E3"}
+{"id": "G1", "beat": "G", "spoken": "Robots that look for evidence before people go in.", "take": "G1"}
+{"id": "G2", "beat": "G", "spoken": "Nemotron on Nebius chooses; observed geometry decides.", "take": "G2"}
+{"id": "G3", "beat": "G", "spoken": "The code is open, under the M I T licence.", "take": "G3"}
