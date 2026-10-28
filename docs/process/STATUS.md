@@ -1,5 +1,22 @@
 # Status (newest first; times IST)
 
+## 2026-10-29 03:18 — G1 passed: local live run with Nemotron decisions and VL hypotheses (FM)
+
+- **Run:** `build/live/runs/live-20261028T212942Z-2eda` (local, not tracked). FP's evidence report is in
+  `evaluation/runs/nemotron/g1_live-20261028T212942Z-2eda/`.
+  - Code 860f284. Scene maze_short_6 (scene_id 89e61fecbb277f69, the same as Bedrock-era run5). Live config `live_llm_v1`, planner `mission_v2`.
+  - 90 sim s on Mesa; runtime exit 0.
+- **Decisions:** 16/18 replans answered by `nvidia/Nemotron-3_5-Lightning` on Token Factory (5.3–13.9 s), with 0 provider fallbacks.
+  2 replans hit the 10-call cap and went to the classical fallback. Cause: a stale `hypothesis_id` was rejected; this is non-fatal since 0d41536. 36 commands sent, 0 expired.
+- **Hypotheses:** 21 total: 15 VL-created, 6 seeded, 5 seeded hypotheses annotated by VL; 16/16 VL calls ok. Final state: 14 confirmed, 3 refuted, 3 supported, 1 unresolved.
+  - The chain (hypothesis → targeting → gate → motion → slab → status → a different next pick) completes in 15/23 targeted decisions,
+    5 of them via a refutation (worked example h010 in the report).
+- **Caveat:** end_to_end_rtf 0.122 on the dev host, while FV's preview renders overlapped (03:06–03:11). This RTF and these latencies are
+  load-affected and are not published without that note. Since then, the rule is no CPU work during live runs.
+- **Spend:** this run cost ~USD 0.25 (Lightning 0.189, VL 0.060); the ledger total is ~USD 0.74.
+  The parallel-inspection prompt (bb57a92) cuts Lightning calls per decision from 6.1 to 2.8 and cost by ~45% on the bench.
+- **Next:** G2 at 120 s on f785424 (the 120 s OOM clause and the stale-id fix), started 03:18.
+
 ## 2026-10-29 02:58 — F3.5 console Hypotheses panel; F6 drafts and cue batch 1 (FV)
 
 - **F3.5 (2b01a4e, fv/rebrand):**
