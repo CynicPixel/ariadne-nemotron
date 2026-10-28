@@ -39,6 +39,9 @@ JOBS="${ARIADNE_BUILD_JOBS:-2}"
 U="$(id -u):$(id -g)"
 log() { printf '[live %s] %s\n' "$(date -u +%H:%M:%S)" "$*" >&2; }
 
+cpuset_arg() {   # VAR -> "--cpuset-cpus LIST" when $VAR is set (a container-level CPU set, docker run)
+  if [ -n "${!1:-}" ]; then printf -- '--cpuset-cpus %s' "${!1}"; fi
+}
 render_args() {
   if docker info --format '{{json .Runtimes}}' 2>/dev/null | grep -q '"nvidia"'; then
     echo "--gpus all -e ARIADNE_RENDER_MODE=nvidia-egl"
@@ -197,11 +200,16 @@ cmd_run() {
     local recon_gpu=() recon_train=()
     if [ "$recon_backend" = gpu ]; then
       recon_gpu=(--gpus all)
-      recon_train=(--iters "${ARIADNE_RECON_ITERS:-100}" --diagnostics)
+      if [ -n "${ARIADNE_RECON_ITERS:-}" ]; then
+        recon_train=(--iters "$ARIADNE_RECON_ITERS")
+      else
+        recon_train=(--budget-ms "${ARIADNE_RECON_BUDGET_MS:-50}")
+      fi
+      [ "${ARIADNE_RECON_DIAGNOSTICS:-0}" != 1 ] || recon_train+=(--diagnostics)
     elif [ "$recon_backend" != cpu_init ]; then
       log "unsupported reconstruction backend: $recon_backend"; exit 2
     fi
-    CONTAINERS+=("$(docker run -d --name "ariadne-live-$id-recon" "${recon_gpu[@]}" \
+    CONTAINERS+=("$(docker run -d --name "ariadne-live-$id-recon" "${recon_gpu[@]}" $(cpuset_arg ARIADNE_CPUSET_RECON) \
       --memory="${ARIADNE_RECON_MEM:-4g}" --memory-swap="${ARIADNE_RECON_MEM:-4g}" \
       -u "$U" -e HOME=/tmp -e OMP_NUM_THREADS=2 -e MKL_NUM_THREADS=2 \
       -v "$REPO_ROOT":/work -w /work/python "${ARIADNE_RECON_IMAGE:-ariadne-recon:1}" \
@@ -226,8 +234,32 @@ cmd_run() {
   python3 "$REPO_ROOT/infra/scripts/live_identity.py" record --run "$REPO_ROOT/$run" \
     --binary "$REPO_ROOT/build/docker/cpp/runtime/ariadne_live" --image "$runtime_image" \
     --commit "$runtime_commit" --dirty "$runtime_dirty"
-  CONTAINERS+=("$(docker run -d --name "ariadne-live-$id-rt" --memory="${ARIADNE_RT_MEM:-6g}" --memory-swap="${ARIADNE_RT_MEM:-6g}" -u "$U" -v "$REPO_ROOT":/work -w /work "${recon_env[@]}" \
+  # ARIADNE_RT_GPU=1: the runtime (and the collab workers it forks) gets the GPU, for collab.dnn_backend ort_cuda;
+  # run it with ARIADNE_CORE_IMAGE=ariadne/core-gpu:dev (CUDA + cuDNN runtime). build/ort/lib = the ONNX Runtime
+  # libraries of an ARIADNE_WITH_ORT build, shipped beside the binary.
+  local rt_gpu=() rt_ld=()
+  [ "${ARIADNE_RT_GPU:-0}" = 1 ] && rt_gpu=(--gpus all)
+  [ -d "$REPO_ROOT/build/ort/lib" ] && rt_ld=(-e LD_LIBRARY_PATH=/work/build/ort/lib)
+  # CPU tuning knobs (all optional; unset = as before). Container level: ARIADNE_CPUSET_RT/_SIM/_RECON = docker
+  # --cpuset-cpus. Inside the runtime container (cpu_affinity.hpp, applied at process start, inherited by later
+  # threads): ARIADNE_CPUSET_MAIN (mission thread, planner workers, the main OpenCV pool), ARIADNE_CPUSET_ESTIMATOR
+  # or ARIADNE_CPUSET_ESTIMATOR_<k>, ARIADNE_CPUSET_COLLAB. A child with no set of its own inherits MAIN's.
+  # Pool sizes: ARIADNE_RT_CV_THREADS (main process, default = the cores it sees), ARIADNE_WORKER_CV_THREADS
+  # (estimators, default 5); collab workers keep collab.worker_threads (their ALIKED output depends on it).
+  local rt_knobs=()
+  for v in ARIADNE_CPUSET_MAIN ARIADNE_CPUSET_ESTIMATOR ARIADNE_CPUSET_ESTIMATOR_0 ARIADNE_CPUSET_ESTIMATOR_1 \
+           ARIADNE_CPUSET_COLLAB ARIADNE_RT_CV_THREADS ARIADNE_WORKER_CV_THREADS; do
+    if [ -n "${!v:-}" ]; then rt_knobs+=(-e "$v=${!v}"); fi
+  done
+  {   # what this run applied (empty file = all defaults), for the evidence record
+    for v in ARIADNE_CPUSET_RT ARIADNE_CPUSET_SIM ARIADNE_CPUSET_RECON ARIADNE_CPUSET_MAIN ARIADNE_CPUSET_ESTIMATOR \
+             ARIADNE_CPUSET_ESTIMATOR_0 ARIADNE_CPUSET_ESTIMATOR_1 ARIADNE_CPUSET_COLLAB ARIADNE_RT_CV_THREADS ARIADNE_WORKER_CV_THREADS; do
+      if [ -n "${!v:-}" ]; then echo "$v=${!v}"; fi
+    done
+  } > "$REPO_ROOT/$run/cpu_knobs.txt"
+  CONTAINERS+=("$(docker run -d --name "ariadne-live-$id-rt" "${rt_gpu[@]}" "${rt_ld[@]}" $(cpuset_arg ARIADNE_CPUSET_RT) "${rt_knobs[@]}" --memory="${ARIADNE_RT_MEM:-6g}" --memory-swap="${ARIADNE_RT_MEM:-6g}" -u "$U" -v "$REPO_ROOT":/work -w /work "${recon_env[@]}" \
     -e ARIADNE_DEMO_MEDIA="${ARIADNE_EXTERNAL_CONSOLE:-0}" \
+    -e ARIADNE_PROFILE="${ARIADNE_PROFILE:-0}" \
     -e ARIADNE_GIT_COMMIT="$runtime_commit" \
     -e ARIADNE_GIT_DIRTY="$runtime_dirty" \
     -e ARIADNE_IMAGE_DIGEST="$runtime_image" \
@@ -238,9 +270,11 @@ cmd_run() {
   rt="${CONTAINERS[-1]}"
 
   # 2. gz (paused) + bridge + RuntimeLink.
+  local latest_stereo=0
+  if grep -q '^mode: *demo' "$REPO_ROOT/$live_cfg"; then latest_stereo=1; fi
   # shellcheck disable=SC2046
-  CONTAINERS+=("$(docker run -d --name "ariadne-live-$id-sim" -u "$U" $(render_args) -v "$REPO_ROOT":/work -w /work \
-    -e GZ_SIM_SYSTEM_PLUGIN_PATH=/work/build/sim-plugins -e HOME=/tmp \
+  CONTAINERS+=("$(docker run -d --name "ariadne-live-$id-sim" -u "$U" $(render_args) $(cpuset_arg ARIADNE_CPUSET_SIM) -v "$REPO_ROOT":/work -w /work \
+    -e GZ_SIM_SYSTEM_PLUGIN_PATH=/work/build/sim-plugins -e HOME=/tmp -e ARIADNE_LIVE_LATEST="$latest_stereo" \
     -e GZ_TRANSPORT_RCVHWM=0 -e GZ_TRANSPORT_SNDHWM=0 \
     "$SIM_IMAGE" bash -c "source /opt/ros/jazzy/setup.bash && source build/ros2/install/setup.bash && \
       ros2 launch ariadne_sim live_world.launch.py scene_dir:=/work/$scene run_dir:=/work/$run")")
@@ -353,18 +387,26 @@ cmd_replay() {
   grep -q '^chooser: *llm' "$REPO_ROOT/$cfg" && extra+=(--decisions "$run/$live_dir/trace.jsonl")
   [ -f "$REPO_ROOT/$run/planner_config.yaml" ] && extra+=(--planner-config "$run/planner_config.yaml")
   [ -f "$REPO_ROOT/$run/shadow_map_config.yaml" ] && extra+=(--shadow-map-config "$run/shadow_map_config.yaml")
+  # ARIADNE_REPLAY_PROFILE_ONLY=1: a newer runtime binary may replay the recording, for its profile only (recorded).
+  local id_args=()
+  [ "${ARIADNE_REPLAY_PROFILE_ONLY:-0}" = 1 ] && id_args=(--allow-binary-change)
   python3 "$REPO_ROOT/infra/scripts/live_identity.py" replay --run "$REPO_ROOT/$run" \
     --binary "$REPO_ROOT/build/docker/cpp/runtime/ariadne_live" \
-    --image "$(docker image inspect "$CORE_IMAGE" --format '{{.Id}}')"
-  for i in ${ARIADNE_REPLAY_ONLY:-1 2}; do   # demorec250 split: each parallel AWS job runs ONE replay leg
-    docker run --rm --memory="${ARIADNE_RT_MEM:-4g}" --memory-swap="${ARIADNE_RT_MEM:-4g}" -u "$U" -v "$REPO_ROOT":/work -w /work \
+    --image "$(docker image inspect "$CORE_IMAGE" --format '{{.Id}}')" "${id_args[@]}"
+  local rp_ld=()
+  [ -d "$REPO_ROOT/build/ort/lib" ] && rp_ld=(-e LD_LIBRARY_PATH=/work/build/ort/lib)
+  # ARIADNE_REPLAY_PASSES=1: one pass, for a profile only (the replay check needs 2); ARIADNE_PROFILE=1 writes
+  # profile.jsonl in each replay dir. ARIADNE_REPLAY_ONLY (demorec250 split): each parallel AWS job runs ONE leg.
+  for i in ${ARIADNE_REPLAY_ONLY:-$(seq 1 "${ARIADNE_REPLAY_PASSES:-2}")}; do
+    docker run --rm "${rp_ld[@]}" -e ARIADNE_PROFILE="${ARIADNE_PROFILE:-0}" --memory="${ARIADNE_RT_MEM:-4g}" --memory-swap="${ARIADNE_RT_MEM:-4g}" -u "$U" -v "$REPO_ROOT":/work -w /work \
       --env-file "$REPO_ROOT/$run/replay_identity.env" "$CORE_IMAGE" build/docker/cpp/runtime/ariadne_live \
       --scene "$scene" --perception-config "$perception_cfg" --slam-config "$slam_cfg" "${imu_noise_arg[@]}" \
       --mission-config "$mission_cfg" --live-config "$cfg" \
       --out "$run/replay$i" --replay "$run/$live_dir/inputs.mcap" "${extra[@]}" \
       > "$REPO_ROOT/$run/replay$i.log" 2>&1
   done
-  [ -n "${ARIADNE_REPLAY_ONLY:-}" ] || python3 "$REPO_ROOT/python/analysis/live_replay_check.py" "$REPO_ROOT/$run"
+  [ -n "${ARIADNE_REPLAY_ONLY:-}" ] || [ "${ARIADNE_REPLAY_PASSES:-2}" -lt 2 ] \
+    || python3 "$REPO_ROOT/python/analysis/live_replay_check.py" "$REPO_ROOT/$run"
 }
 
 case "${1:-}" in

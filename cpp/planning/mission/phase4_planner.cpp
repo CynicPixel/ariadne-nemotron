@@ -6,6 +6,7 @@
 #include <opencv2/imgproc.hpp>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <limits>
 #include <map>
@@ -14,6 +15,19 @@
 #include <string>
 
 namespace ariadne::planning {
+
+namespace {
+// Appends (stage, wall ms since the previous lap) to the plan's profile split. Never read by planning.
+struct StageClock {
+    std::vector<std::pair<std::string, double>>* out;
+    std::chrono::steady_clock::time_point t = std::chrono::steady_clock::now();
+    void Lap(const char* stage) {
+        const auto now = std::chrono::steady_clock::now();
+        out->emplace_back(stage, std::chrono::duration<double, std::milli>(now - t).count());
+        t = now;
+    }
+};
+}  // namespace
 
 bool RegionDirective::Covers(double px, double py) const {
     bool in = false;
@@ -147,6 +161,11 @@ Phase4Planner::Phase4Planner(const Phase4Briefing& b, const Phase4Params& p, int
     : b_(b), p_(p), map_(p.tsdf), esdf_(p.tsdf.voxel, p.trav.responder.rho + 2 * p.tsdf.voxel), fr_(p.frontiers),
       egress_(b.target, b.entrances, b.grid.cell) {
     if (n_agents < 1) throw std::invalid_argument("Phase4Planner: n_agents must be >= 1");
+    // The mission grid bounds what the planner can use: size the ESDF to it once, so exploring never forces a
+    // global rebuild (values are the same either way, esdf.hpp).
+    esdf_.Reserve(map_.ToVoxel(core::Vec3(b.grid.ox, b.grid.oy, 0.0)),
+                  map_.ToVoxel(core::Vec3(b.grid.ox + b.grid.cols * b.grid.cell, b.grid.oy + b.grid.rows * b.grid.cell,
+                                          b.z_max_m)));
     track_.resize(size_t(n_agents));
     last_pick_.assign(size_t(n_agents), -1);
     shared_.assign(size_t(n_agents), std::vector<size_t>(size_t(n_agents), 0));
@@ -155,8 +174,30 @@ Phase4Planner::Phase4Planner(const Phase4Briefing& b, const Phase4Params& p, int
 size_t Phase4Planner::Integrate(int agent, int64_t /*t_ns*/, const DepthFrame& f) {
     if (agent < 0 || agent >= Agents()) throw std::out_of_range("Phase4Planner::Integrate: agent " + std::to_string(agent));
     const std::vector<Idx3> dirty = map_.Integrate(f);
+    bool incremental = false;
     if (esdf_.Empty()) esdf_.Rebuild(map_);
-    else esdf_.Update(map_, dirty);
+    else incremental = esdf_.Update(map_, dirty);
+    if (!incremental || trav_cols_.Empty()) {
+        trav_dirty_.release();   // every column at the next PlanMaps
+    } else if (!dirty.empty() && !trav_dirty_.empty()) {
+        // A column reads the map/ESDF within TravColumnReach voxels of itself: mark that neighbourhood of each block.
+        const int m = TravColumnReach(esdf_, map_.Voxel());
+        const int cx0 = int(std::lround(b_.grid.ox / map_.Voxel())), cy0 = int(std::lround(b_.grid.oy / map_.Voxel()));
+        for (const auto& bk : dirty) {
+            const int c0 = std::max(bk.x * kBlockSide - m - cx0, 0), c1 = std::min((bk.x + 1) * kBlockSide - 1 + m - cx0, b_.grid.cols - 1);
+            const int r0 = std::max(bk.y * kBlockSide - m - cy0, 0), r1 = std::min((bk.y + 1) * kBlockSide - 1 + m - cy0, b_.grid.rows - 1);
+            if (c0 <= c1 && r0 <= r1) trav_dirty_(cv::Range(r0, r1 + 1), cv::Range(c0, c1 + 1)).setTo(1);
+        }
+    }
+    if (!dirty.empty() && !support_dirty_.empty()) {   // empty = every column is already pending
+        const int m = BodySupportReach(p_.trav.responder, map_.Voxel());
+        const int cx0 = int(std::lround(b_.grid.ox / map_.Voxel())), cy0 = int(std::lround(b_.grid.oy / map_.Voxel()));
+        for (const auto& bk : dirty) {
+            const int c0 = std::max(bk.x * kBlockSide - m - cx0, 0), c1 = std::min((bk.x + 1) * kBlockSide - 1 + m - cx0, b_.grid.cols - 1);
+            const int r0 = std::max(bk.y * kBlockSide - m - cy0, 0), r1 = std::min((bk.y + 1) * kBlockSide - 1 + m - cy0, b_.grid.rows - 1);
+            if (c0 <= c1 && r0 <= r1) support_dirty_(cv::Range(r0, r1 + 1), cv::Range(c0, c1 + 1)).setTo(1);
+        }
+    }
     if (!dirty.empty()) {
         Idx3 lo{1 << 30, 1 << 30, 1 << 30}, hi{-(1 << 30), -(1 << 30), -(1 << 30)};
         for (const auto& bk : dirty) {
@@ -238,12 +279,24 @@ Phase4Plan Phase4Planner::Plan(double t_s, const std::vector<Phase4AgentInput>& 
 }
 
 void Phase4Planner::PlanMaps(Phase4Plan* out) {
-    out->maps = ComputeTraversability(map_, esdf_, b_.grid, p_.trav);
-    out->support = BodySupport(map_, b_.grid, p_.trav.responder, p_.support_band_lo, p_.support_band_hi);
+    StageClock clk{&out->stage_ms};
+    // Bit-equal to ComputeTraversability (test): unchanged columns are reused, the whole-grid finish is redone.
+    UpdateTravColumns(map_, esdf_, b_.grid, p_.trav, trav_dirty_, &trav_cols_);
+    trav_dirty_ = cv::Mat::zeros(b_.grid.rows, b_.grid.cols, CV_8U);
+    clk.Lap("trav_cols");
+    out->maps = FinishTraversability(trav_cols_, b_.grid, map_.Voxel(), esdf_.DMax(), p_.trav);
+    clk.Lap("trav_finish");
+    // Bit-equal to BodySupport (test): only columns near new map changes are recounted.
+    UpdateSupportCounts(map_, b_.grid, p_.trav.responder, p_.support_band_lo, p_.support_band_hi, support_dirty_,
+                        &support_);
+    support_dirty_ = cv::Mat::zeros(b_.grid.rows, b_.grid.cols, CV_8U);
+    out->support = SupportFromCounts(support_);
+    clk.Lap("support");
     EgressWeights w = p_.egress;
     if (!p_.risk_calibrated) w.w_r = 0;   // invariant: the [PROXY] enters only after D112's bar
     const cv::Mat pen = EgressPenalty(out->maps.clear_r, out->support, out->maps.risk, w);
     out->egress = egress_.Replan(out->maps.trav_r, pen, out->support, out->maps.risk);
+    clk.Lap("egress");
 }
 
 Phase4AgentPlan Phase4Planner::PlanAgent(double t_s, int a, const Phase4AgentInput& in, std::vector<PeerKeyframe> peers,
@@ -292,8 +345,12 @@ Phase4Plan Phase4Planner::PlanOwn(double t_s, int self, const Phase4AgentInput& 
     out.allocation.method = "broker";   // allocated by the component's broker over TASK_BID (D175), not here
     PlanMaps(&out);
     if (!in.active) return out;
+    StageClock clk{&out.stage_ms};
     const CoarseLayer coarse = BuildCoarse(map_);
+    clk.Lap("coarse");
     out.agents[size_t(self)] = PlanAgent(t_s, self, in, peers, peer_known, true, dirs, out, coarse);
+    clk.Lap("agent");   // = the nbv.* split below + plan space, keep-out and directives
+    for (const auto& [stage, ms] : out.agents[size_t(self)].nbv.stage_ms) out.stage_ms.emplace_back("nbv." + stage, ms);
     return out;
 }
 

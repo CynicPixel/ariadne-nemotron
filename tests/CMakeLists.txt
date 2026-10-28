@@ -64,7 +64,10 @@ add_executable(test_unit
   unit/test_euroc.cpp
   unit/test_imu_noise.cpp
   unit/test_comms.cpp
-  unit/test_ros_cdr.cpp)
+  unit/test_ros_cdr.cpp
+  unit/test_message_queue.cpp
+  unit/test_agent_worker.cpp
+  unit/test_cpu_affinity.cpp)
 target_link_libraries(test_unit PRIVATE ariadne::runtime ariadne::perception ariadne::slam GTest::gtest_main)
 # Tests read the shipped configs from the source tree.
 target_compile_definitions(test_unit PRIVATE ARIADNE_SOURCE_DIR="${CMAKE_SOURCE_DIR}")

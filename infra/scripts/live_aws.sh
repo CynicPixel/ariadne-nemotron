@@ -39,6 +39,12 @@ bucket() {
 # proven deterministic across machines at D168 M1); LIVE_AWS_MAX_MIN raises cmd_run's instance cap for long runs.
 PROFILE="${LIVE_AWS_PROFILE:-gpu}"
 RUN_MAX_MIN="${LIVE_AWS_MAX_MIN:-60}"
+INSTANCE_ARGS=()
+if [[ -n "${LIVE_AWS_INSTANCE_TYPE:-}" ]]; then
+  INSTANCE_ARGS=(--type "$LIVE_AWS_INSTANCE_TYPE")
+fi
+# LIVE_AWS_AZ pins the spot AZ (spinup.sh --az): the cheapest AZ can be out of g5 capacity.
+[[ -n "${LIVE_AWS_AZ:-}" ]] && INSTANCE_ARGS+=(--az "$LIVE_AWS_AZ")
 
 # local image -> ECR repo
 declare -A REPO=([ariadne/sim:dev]=ariadne/ariadne-sim [ariadne/core-dev:dev]=ariadne/ariadne-core [ariadne-console:1]=ariadne/ariadne-console [ariadne-orchestrator:1]=ariadne/ariadne-orchestrator [ariadne-recon:1]=ariadne/ariadne-gpu)
@@ -75,6 +81,7 @@ cmd_payload() {   # SCENE... (one or more scene directories)
   [ -f "$REPO_ROOT/build/docker/cpp/runtime/ariadne_sim_vo" ] && extra+=(build/docker/cpp/runtime/ariadne_sim_vo)
   [ -f "$REPO_ROOT/build/docker/cpp/runtime/ariadne_live_canonical" ] && extra+=(build/docker/cpp/runtime/ariadne_live_canonical)
   [ -d "$REPO_ROOT/.cache/models" ] && extra+=(.cache/models)
+  [ -d "$REPO_ROOT/build/ort/lib" ] && extra+=(build/ort/lib)   # ONNX Runtime of an ARIADNE_WITH_ORT build
   (cd "$REPO_ROOT" && tar chf - build/docker/cpp/runtime/ariadne_live build/sim-plugins/libariadne_kinematic_mover.so \
      build/ros2/install "${extra[@]}" "$@") | tar xf - -C "$stage/p"
   (cd "$stage/p" && find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS)
@@ -131,7 +138,7 @@ ARIADNE_SMOKE_OUT_HOST=$R/sim-smoke ARIADNE_SMOKE_TIMEOUT=120 infra/scripts/sim.
 docker run --rm --gpus all ariadne/sim:dev bash -c 'ls -la /usr/share/glvnd/egl_vendor.d/; ldconfig -p | grep -iE "libEGL_nvidia|libnvidia-egl" | head' > $R/egl_vendor.txt 2>&1 || true
 EOF
   } > "$script"
-  "$REPO_ROOT/infra/scripts/spinup.sh" run --profile "$PROFILE" --max-minutes 25 -- "$(cat "$script")"
+  "$REPO_ROOT/infra/scripts/spinup.sh" run --profile "$PROFILE" "${INSTANCE_ARGS[@]}" --max-minutes 25 -- "$(cat "$script")"
 }
 
 cmd_run() {
@@ -145,19 +152,28 @@ cmd_run() {
   local uri="${LIVE_AWS_PAYLOAD_URI:-${ARIADNE_LIVE_PAYLOAD_URI:-}}"
   [ -n "$uri" ] || uri="$(cmd_payload "$scene")"
   local script="$REPO_ROOT/build/live_payload/run-$(date -u +%Y%m%dT%H%M%SZ).sh"
+  local knobs="" v   # live.sh's optional CPU tuning knobs, forwarded only when set here
+  for v in ARIADNE_CPUSET_RT ARIADNE_CPUSET_SIM ARIADNE_CPUSET_RECON ARIADNE_CPUSET_MAIN ARIADNE_CPUSET_ESTIMATOR \
+           ARIADNE_CPUSET_ESTIMATOR_0 ARIADNE_CPUSET_ESTIMATOR_1 ARIADNE_CPUSET_COLLAB ARIADNE_RT_CV_THREADS ARIADNE_WORKER_CV_THREADS; do
+    if [ -n "${!v:-}" ]; then knobs+="$v=${!v} "; fi
+  done
   { prologue "$refs"; cat <<EOF
 export ARIADNE_GIT_COMMIT=$source_commit ARIADNE_GIT_DIRTY=$source_dirty ARIADNE_RT_MEM=${ARIADNE_RT_MEM:-6g}
 aws s3 cp $uri - | tar xz -C /tmp
 (cd /tmp/p && sha256sum -c --quiet SHA256SUMS) && echo "payload sha256 OK" > \$R/payload_check.txt
 cp -a /tmp/p/. . && cp /tmp/p/SHA256SUMS \$R/
 mkdir -p build/live/runs
+if [ '${ARIADNE_RT_GPU:-0}' = 1 ]; then   # the GPU runtime image: core-dev + CUDA 12.8 runtime + cuDNN 9
+  docker build -q -f infra/docker/core-gpu.Dockerfile -t ariadne/core-gpu:dev . > \$R/core_gpu_image.txt 2>&1
+fi
 if env ARIADNE_LOCKSTEP=${ARIADNE_LOCKSTEP:-} ARIADNE_LIVE_CONFIG=${ARIADNE_LIVE_CONFIG:-} ARIADNE_PLANNER_CONFIG=${ARIADNE_PLANNER_CONFIG:-} \
 ARIADNE_PERCEPTION_CONFIG=${ARIADNE_PERCEPTION_CONFIG:-} ARIADNE_SLAM_CONFIG=${ARIADNE_SLAM_CONFIG:-} ARIADNE_IMU_NOISE_CONFIG=${ARIADNE_IMU_NOISE_CONFIG:-} ARIADNE_MISSION_CONFIG=${ARIADNE_MISSION_CONFIG:-} \
 ARIADNE_SHADOW_MAP_CONFIG=${ARIADNE_SHADOW_MAP_CONFIG:-} \
 ARIADNE_SPLAT=${ARIADNE_SPLAT:-0} ARIADNE_RECON_IMAGE=${ARIADNE_RECON_IMAGE:-ariadne-recon:1} \
-ARIADNE_RECON_BACKEND=${ARIADNE_RECON_BACKEND:-cpu_init} ARIADNE_RECON_ITERS=${ARIADNE_RECON_ITERS:-100} \
+ARIADNE_RECON_BACKEND=${ARIADNE_RECON_BACKEND:-cpu_init} ARIADNE_RECON_ITERS=${ARIADNE_RECON_ITERS:-} ARIADNE_RECON_BUDGET_MS=${ARIADNE_RECON_BUDGET_MS:-50} ARIADNE_RECON_DIAGNOSTICS=${ARIADNE_RECON_DIAGNOSTICS:-0} \
 ARIADNE_RT_MEM=${ARIADNE_RT_MEM:-6g} ARIADNE_PROFILE=${ARIADNE_PROFILE:-} ARIADNE_SAMPLER=${ARIADNE_SAMPLER:-} \
-  infra/scripts/live.sh run $scene build/live/runs $end_s > \$R/live_run.log 2>&1; then live_rc=0; else live_rc=\$?; fi
+ARIADNE_RT_GPU=${ARIADNE_RT_GPU:-0} \$( [ '${ARIADNE_RT_GPU:-0}' = 1 ] && echo ARIADNE_CORE_IMAGE=ariadne/core-gpu:dev ) \
+$knobs  infra/scripts/live.sh run $scene build/live/runs $end_s > \$R/live_run.log 2>&1; then live_rc=0; else live_rc=\$?; fi
 run=\$(find build/live/runs -mindepth 1 -maxdepth 1 -type d -name 'live-*' -printf '%T@ %p\\n' | sort -nr | head -1 | cut -d' ' -f2-)
 if [ -n "\$run" ]; then
   if [ -n '${LIVE_AWS_SKIP_REPLAY:-}' ]; then replay_rc=0; echo 'replay skipped (LIVE_AWS_SKIP_REPLAY; legs run as replay-s3 jobs)' > \$R/replay.log
@@ -184,14 +200,17 @@ printf 'live_exit=%s\\nreplay_exit=%s\\n' "\$live_rc" "\$replay_rc" > \$R/missio
 test "\$live_rc" -eq 0 -a "\$replay_rc" -eq 0
 EOF
   } > "$script"
-  "$REPO_ROOT/infra/scripts/spinup.sh" run --profile "$PROFILE" --max-minutes "$RUN_MAX_MIN" -- "$(cat "$script")"
+  "$REPO_ROOT/infra/scripts/spinup.sh" run --profile "$PROFILE" "${INSTANCE_ARGS[@]}" --max-minutes "$RUN_MAX_MIN" -- "$(cat "$script")"
 }
 
-cmd_replay_s3() {   # S3_RUN_TARBALL SCENE [PAYLOAD_URI] - replay an EXISTING recording in-region
-  local tarball="$1" scene="$2" pay="${3:-}"
+cmd_replay_s3() {   # S3_RUN_TARBALL SCENE [PAYLOAD_URI] - replay an EXISTING recording in-region (no local download)
+  # PAYLOAD_URI, else ARIADNE_LIVE_PAYLOAD_URI / LIVE_AWS_PAYLOAD_URI (as cmd_run: one payload across capacity retries
+  # and replay legs), else a fresh upload. ARIADNE_REPLAY_RECORDING_URI: the run's inputs.mcap when it was archived
+  # apart (ARIADNE_ARCHIVE_RECORDING=separate); ARIADNE_PROFILE / ARIADNE_REPLAY_PASSES are passed to live.sh replay.
+  local tarball="$1" scene="$2" pay="${3:-}" rec="${ARIADNE_REPLAY_RECORDING_URI:-}"
   local refs; refs="$(cmd_push)"
-  local uri
-  if [ -n "$pay" ]; then uri="$pay"; else uri="$(cmd_payload "$scene")"; fi
+  local uri="${pay:-${ARIADNE_LIVE_PAYLOAD_URI:-${LIVE_AWS_PAYLOAD_URI:-}}}"
+  [ -n "$uri" ] || uri="$(cmd_payload "$scene")"
   local script="$REPO_ROOT/build/live_payload/replays3-$(date -u +%Y%m%dT%H%M%SZ).sh"
   { prologue "$refs"; cat <<EOF
 aws s3 cp $uri - | tar xz -C /tmp
@@ -201,6 +220,9 @@ mkdir -p /tmp/runsrc build/live/runs
 aws s3 cp $tarball - | tar xz -C /tmp/runsrc
 src=\$(ls -d /tmp/runsrc/build/live/runs/live-* | tail -1)
 rm -rf "\$src/replay1" "\$src/replay2" "\$src"/replay*.log "\$src/replay_check.json"
+if [ -n '$rec' ]; then   # beside the run's manifest, where live.sh replay looks for it
+  aws s3 cp '$rec' "\$(dirname "\$(ls -d "\$src"/*/manifest.yaml | head -1)")/inputs.mcap" --only-show-errors
+fi
 cp -a "\$src" build/live/runs/
 run=build/live/runs/\$(basename "\$src")
 memmon() {   # 788896 diag (M): 1 s host-side sampler - per-container mem, biggest processes, cgroup peak/oom_kill
@@ -215,7 +237,7 @@ memmon() {   # 788896 diag (M): 1 s host-side sampler - per-container mem, bigge
   done
 }
 memmon & MEMMON=\$!
-ARIADNE_REPLAY_ONLY=${ARIADNE_REPLAY_ONLY:-} ARIADNE_RT_MEM=\${ARIADNE_RT_MEM:-20g} infra/scripts/live.sh replay "\$run" $scene > \$R/replay.log 2>&1 || echo "replay_check_failed" >> \$R/replay.log
+ARIADNE_REPLAY_ONLY=${ARIADNE_REPLAY_ONLY:-} ARIADNE_PROFILE=${ARIADNE_PROFILE:-0} ARIADNE_REPLAY_PASSES=${ARIADNE_REPLAY_PASSES:-2} ARIADNE_REPLAY_PROFILE_ONLY=${ARIADNE_REPLAY_PROFILE_ONLY:-0} ARIADNE_RT_MEM=\${ARIADNE_RT_MEM:-20g} infra/scripts/live.sh replay "\$run" $scene > \$R/replay.log 2>&1 || echo "replay_check_failed" >> \$R/replay.log
 kill \$MEMMON 2>/dev/null || true
 dmesg -T 2>/dev/null | grep -iE 'oom|killed process' > \$R/dmesg_oom.txt || true
 docker ps -aq | xargs -r docker inspect --format '{{.Name}} {{json .State}}' > \$R/docker_state.txt 2>/dev/null || true
@@ -223,7 +245,7 @@ cp "\$run/replay_check.json" \$R/ 2>/dev/null || true
 tar czf \$R/replays.tar.gz "\$run"/replay1 "\$run"/replay2 "\$run"/replay*.log 2>/dev/null || true
 EOF
   } > "$script"
-  "$REPO_ROOT/infra/scripts/spinup.sh" run --profile "$PROFILE" --max-minutes "$RUN_MAX_MIN" -- "$(cat "$script")"
+  "$REPO_ROOT/infra/scripts/spinup.sh" run --profile "$PROFILE" "${INSTANCE_ARGS[@]}" --max-minutes "$RUN_MAX_MIN" -- "$(cat "$script")"
 }
 
 cmd_spool_s3() {   # S3_RUN_TARBALL SCENE - build per-agent recon spools from an S3 recording, in-region (D214/D195)
@@ -423,7 +445,7 @@ while read -r preset seed end_s cfg; do
 done < $R/jobs.txt
 BATCH
   } > "$script"
-  "$REPO_ROOT/infra/scripts/spinup.sh" run --profile "$PROFILE" --max-minutes "$max_min" -- "$(cat "$script")"
+  "$REPO_ROOT/infra/scripts/spinup.sh" run --profile "$PROFILE" "${INSTANCE_ARGS[@]}" --max-minutes "$max_min" -- "$(cat "$script")"
 }
 
 case "${1:-}" in

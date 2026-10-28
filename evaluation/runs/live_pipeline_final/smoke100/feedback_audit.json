@@ -1,0 +1,42 @@
+{
+  "scope": "Movement is measured from recorded ground-truth body trajectories. Command age is\napplied simulation time minus decision stamp, using simulator-side mover records.\nThis is a feedback-loop diagnostic, not a coverage, route or task-completion score.",
+  "end_s": 100.0,
+  "agents": {
+    "0": {
+      "gt_samples": 20000,
+      "gt_first_s": 0.005,
+      "gt_last_s": 100.0,
+      "gt_translation_path_m": 5.399122723971106,
+      "gt_net_displacement_m": 3.685274752308164,
+      "applied_commands_within_horizon": 10,
+      "applied_commands_after_horizon": 5,
+      "first_command_applied_s": 14.151000000000002,
+      "negative_command_age_count": 0,
+      "command_age_sim_s": {
+        "p50": 23.701,
+        "p95": 36.756,
+        "max": 37.701,
+        "samples": 10
+      }
+    },
+    "1": {
+      "gt_samples": 20000,
+      "gt_first_s": 0.005,
+      "gt_last_s": 100.0,
+      "gt_translation_path_m": 5.250573072664308,
+      "gt_net_displacement_m": 3.898236780904926,
+      "applied_commands_within_horizon": 10,
+      "applied_commands_after_horizon": 5,
+      "first_command_applied_s": 14.151000000000002,
+      "negative_command_age_count": 0,
+      "command_age_sim_s": {
+        "p50": 23.701,
+        "p95": 36.756,
+        "max": 37.701,
+        "samples": 10
+      }
+    }
+  },
+  "source": "build/runs/20261026T214842Z-gpu-beb510/output/results/run.tar.gz",
+  "sha256": "d7f07186c01a201c19d51cdf2c71876363d8633f40007fc137f5f3b5e55abb50"
+}

@@ -1,0 +1,84 @@
+[0/2] Re-checking globbed directories...
+[1/4] Building CXX object cpp/runtime/CMakeFiles/ariadne_live.dir/tools/ariadne_live.cpp.o
+[2/4] Linking CXX executable cpp/runtime/ariadne_live
+[3/4] Building CXX object tests/CMakeFiles/test_opencv.dir/unit/test_live_link.cpp.o
+[4/4] Linking CXX executable tests/test_opencv
+Running main() from /work/.cache/fetchcontent-docker/googletest-src/googletest/src/gtest_main.cc
+Note: Google Test filter = LiveLink.*:LockstepGate.*:MultiAgentPlanning.*:Multiagent.*
+[==========] Running 30 tests from 4 test suites.
+[----------] Global test environment set-up.
+[----------] 9 tests from LiveLink
+[ RUN      ] LiveLink.FramesRoundTripOverASocket
+[       OK ] LiveLink.FramesRoundTripOverASocket (10 ms)
+[ RUN      ] LiveLink.CommandAndMoverStateCdrRoundTrip
+[       OK ] LiveLink.CommandAndMoverStateCdrRoundTrip (0 ms)
+[ RUN      ] LiveLink.OrderBreaksAreCounted
+[       OK ] LiveLink.OrderBreaksAreCounted (0 ms)
+[ RUN      ] LiveLink.AnswersReleasedInCanonicalOrder
+[       OK ] LiveLink.AnswersReleasedInCanonicalOrder (0 ms)
+[ RUN      ] LiveLink.ReordererReleasesBehindTheWatermark
+[       OK ] LiveLink.ReordererReleasesBehindTheWatermark (253 ms)
+[ RUN      ] LiveLink.RecordingReplaysInConsumedOrderWithTies
+[       OK ] LiveLink.RecordingReplaysInConsumedOrderWithTies (0 ms)
+[ RUN      ] LiveLink.AssemblerLenientDropsWhereStrictThrows
+[       OK ] LiveLink.AssemblerLenientDropsWhereStrictThrows (15 ms)
+[ RUN      ] LiveLink.PipelinedIngestMatchesFeedExactly
+[       OK ] LiveLink.PipelinedIngestMatchesFeedExactly (0 ms)
+[ RUN      ] LiveLink.DemoArrivalOrderDoesNotWaitForAnotherCameraOrReorderImu
+[       OK ] LiveLink.DemoArrivalOrderDoesNotWaitForAnotherCameraOrReorderImu (0 ms)
+[----------] 9 tests from LiveLink (279 ms total)
+
+[----------] 7 tests from LockstepGate
+[ RUN      ] LockstepGate.WaitsOnEveryLane
+[       OK ] LockstepGate.WaitsOnEveryLane (0 ms)
+[ RUN      ] LockstepGate.PreD225ShapeTripsHere
+[       OK ] LockstepGate.PreD225ShapeTripsHere (0 ms)
+[ RUN      ] LockstepGate.AllDoneShortNeedsEveryLaneDoneBeforeT
+[       OK ] LockstepGate.AllDoneShortNeedsEveryLaneDoneBeforeT (0 ms)
+[ RUN      ] LockstepGate.MinProgressIsTheSlowestUnfinishedLane
+[       OK ] LockstepGate.MinProgressIsTheSlowestUnfinishedLane (0 ms)
+[ RUN      ] LockstepGate.DemoProgressDoesNotWaitForStalledPeer
+[       OK ] LockstepGate.DemoProgressDoesNotWaitForStalledPeer (0 ms)
+[ RUN      ] LockstepGate.CollaborativeDemoIntegratesItsOwnMaps
+[       OK ] LockstepGate.CollaborativeDemoIntegratesItsOwnMaps (0 ms)
+[ RUN      ] LockstepGate.SkippedDemoDecisionDoesNotSkipRadioHeartbeats
+[       OK ] LockstepGate.SkippedDemoDecisionDoesNotSkipRadioHeartbeats (0 ms)
+[----------] 7 tests from LockstepGate (0 ms total)
+
+[----------] 13 tests from MultiAgentPlanning
+[ RUN      ] MultiAgentPlanning.EncodeCellsTriStatePlusResponderBit
+[       OK ] MultiAgentPlanning.EncodeCellsTriStatePlusResponderBit (0 ms)
+[ RUN      ] MultiAgentPlanning.ExporterSendsOnlyBlocksChangedSinceTheAck
+[       OK ] MultiAgentPlanning.ExporterSendsOnlyBlocksChangedSinceTheAck (0 ms)
+[ RUN      ] MultiAgentPlanning.ReceivedLayersPlaceMergeAndRefuseOwn
+[       OK ] MultiAgentPlanning.ReceivedLayersPlaceMergeAndRefuseOwn (0 ms)
+[ RUN      ] MultiAgentPlanning.BrokerEqualsCentralisedSgaUnderFullDelivery
+[       OK ] MultiAgentPlanning.BrokerEqualsCentralisedSgaUnderFullDelivery (0 ms)
+[ RUN      ] MultiAgentPlanning.BrokerIsExactlyOnceByRSameAndIgnoresStrangers
+[       OK ] MultiAgentPlanning.BrokerIsExactlyOnceByRSameAndIgnoresStrangers (0 ms)
+[ RUN      ] MultiAgentPlanning.ApplyConsensusFollowsWhatArrivedOrSaysWhyNot
+[       OK ] MultiAgentPlanning.ApplyConsensusFollowsWhatArrivedOrSaysWhyNot (0 ms)
+[ RUN      ] MultiAgentPlanning.PlanOwnWithoutReceivedDataEqualsPlansOwnAgent
+[       OK ] MultiAgentPlanning.PlanOwnWithoutReceivedDataEqualsPlansOwnAgent (629 ms)
+[ RUN      ] MultiAgentPlanning.PeerKnownColumnsAreNoGain
+[       OK ] MultiAgentPlanning.PeerKnownColumnsAreNoGain (369 ms)
+[ RUN      ] MultiAgentPlanning.FootprintsSumToCoverageAndOnlyPerAgent
+[       OK ] MultiAgentPlanning.FootprintsSumToCoverageAndOnlyPerAgent (357 ms)
+[ RUN      ] MultiAgentPlanning.OverlapBrokerAvoidsTheSharedBlockDiscountAvoidsTheNearGoal
+[       OK ] MultiAgentPlanning.OverlapBrokerAvoidsTheSharedBlockDiscountAvoidsTheNearGoal (0 ms)
+[ RUN      ] MultiAgentPlanning.CutOffAgentDiscountsByRememberedClaims
+[       OK ] MultiAgentPlanning.CutOffAgentDiscountsByRememberedClaims (0 ms)
+[ RUN      ] MultiAgentPlanning.OperatorEgressRoutesOnlyOverWhatWasReceivedAndCertified
+[       OK ] MultiAgentPlanning.OperatorEgressRoutesOnlyOverWhatWasReceivedAndCertified (1 ms)
+[ RUN      ] MultiAgentPlanning.NAgentStepsOnNThreadsEqualTheSerialRun
+[       OK ] MultiAgentPlanning.NAgentStepsOnNThreadsEqualTheSerialRun (4222 ms)
+[----------] 13 tests from MultiAgentPlanning (5581 ms total)
+
+[----------] 1 test from Multiagent
+[ RUN      ] Multiagent.AllocationIdentitySurvivesGeometricSolveRevisions
+[       OK ] Multiagent.AllocationIdentitySurvivesGeometricSolveRevisions (0 ms)
+[----------] 1 test from Multiagent (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 30 tests from 4 test suites ran. (5861 ms total)
+[  PASSED  ] 30 tests.

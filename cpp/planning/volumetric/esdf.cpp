@@ -1,8 +1,11 @@
 #include "planning/volumetric/esdf.hpp"
 
+#include <opencv2/core.hpp>
+
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <set>
 #include <stdexcept>
 
 namespace ariadne::planning {
@@ -48,8 +51,13 @@ void Esdf::Rebuild(const TsdfMap& map) {
         egress_.clear(), agent_.clear(), dims_ = {};
         return;
     }
-    // Horizontal margin pad_m (growth headroom) + k; vertical only k (the scenes are bounded in z).
-    const int pad = int(std::ceil(pad_m_ / vox_)) + k_;
+    if (reserved_) {
+        lo = {std::min(lo.x, res_lo_.x), std::min(lo.y, res_lo_.y), std::min(lo.z, res_lo_.z)};
+        hi = {std::max(hi.x, res_hi_.x), std::max(hi.y, res_hi_.y), std::max(hi.z, res_hi_.z)};
+    }
+    // Horizontal margin pad_m (growth headroom) + k; vertical only k (the scenes are bounded in z). A reserved
+    // extent is the headroom, so it needs only the k margin.
+    const int pad = (reserved_ ? 0 : int(std::ceil(pad_m_ / vox_))) + k_;
     lo_ = {lo.x - pad, lo.y - pad, lo.z - k_};
     dims_ = {hi.x - lo.x + 1 + 2 * pad, hi.y - lo.y + 1 + 2 * pad, hi.z - lo.z + 1 + 2 * k_};
     const size_t n = size_t(dims_.x) * size_t(dims_.y) * size_t(dims_.z);
@@ -70,33 +78,53 @@ bool Esdf::Update(const TsdfMap& map, const std::vector<Idx3>& dirty_blocks) {
         Rebuild(map);
         return false;
     }
-    Idx3 a{1 << 30, 1 << 30, 1 << 30}, b{-(1 << 30), -(1 << 30), -(1 << 30)};
-    for (const Idx3& d : dirty_blocks) {
-        a = {std::min(a.x, d.x), std::min(a.y, d.y), std::min(a.z, d.z)};
-        b = {std::max(b.x, d.x), std::max(b.y, d.y), std::max(b.z, d.z)};
-    }
-    a = {a.x * kBlockSide, a.y * kBlockSide, a.z * kBlockSide};
-    b = {(b.x + 1) * kBlockSide - 1, (b.y + 1) * kBlockSide - 1, (b.z + 1) * kBlockSide - 1};
+    // The x-y update tiles (aligned to the box origin) that some dirty block, dilated by k, touches; one z range for
+    // all of them (dirty z extent +- k). Every voxel a change can move lies in one of these tiles.
+    constexpr int kUpdateTile = 48;
     const Idx3 last{lo_.x + dims_.x - 1, lo_.y + dims_.y - 1, lo_.z + dims_.z - 1};
-    auto Clip = [&](Idx3 p) {
-        return Idx3{std::clamp(p.x, lo_.x, last.x), std::clamp(p.y, lo_.y, last.y), std::clamp(p.z, lo_.z, last.z)};
-    };
-    Recompute(map, Clip({a.x - k, a.y - k, a.z - k}), Clip({b.x + k, b.y + k, b.z + k}));
+    int zlo = 1 << 30, zhi = -(1 << 30);
+    std::set<std::pair<int, int>> touched;   // (ty, tx) tile indices; ordered, so the work list is deterministic
+    for (const Idx3& d : dirty_blocks) {
+        const int x0 = std::max(d.x * kBlockSide - k, lo_.x), x1 = std::min((d.x + 1) * kBlockSide - 1 + k, last.x);
+        const int y0 = std::max(d.y * kBlockSide - k, lo_.y), y1 = std::min((d.y + 1) * kBlockSide - 1 + k, last.y);
+        zlo = std::min(zlo, d.z * kBlockSide - k), zhi = std::max(zhi, (d.z + 1) * kBlockSide - 1 + k);
+        for (int ty = (y0 - lo_.y) / kUpdateTile; ty <= (y1 - lo_.y) / kUpdateTile; ++ty)
+            for (int tx = (x0 - lo_.x) / kUpdateTile; tx <= (x1 - lo_.x) / kUpdateTile; ++tx) touched.insert({ty, tx});
+    }
+    zlo = std::clamp(zlo, lo_.z, last.z), zhi = std::clamp(zhi, lo_.z, last.z);
+    std::vector<std::pair<Idx3, Idx3>> tiles;
+    tiles.reserve(touched.size());
+    for (const auto& [ty, tx] : touched) {
+        const Idx3 tlo{lo_.x + tx * kUpdateTile, lo_.y + ty * kUpdateTile, zlo};
+        tiles.push_back({tlo, {std::min(tlo.x + kUpdateTile - 1, last.x), std::min(tlo.y + kUpdateTile - 1, last.y), zhi}});
+    }
+    RecomputeTiles(map, tiles);
     return true;
 }
 
 void Esdf::Recompute(const TsdfMap& map, Idx3 olo, Idx3 ohi) {
     constexpr int kTile = 96;
+    std::vector<std::pair<Idx3, Idx3>> tiles;
+    for (int ty = olo.y; ty <= ohi.y; ty += kTile)
+        for (int tx = olo.x; tx <= ohi.x; tx += kTile)
+            tiles.push_back({{tx, ty, olo.z}, {std::min(tx + kTile - 1, ohi.x), std::min(ty + kTile - 1, ohi.y), ohi.z}});
+    RecomputeTiles(map, tiles);
+}
+
+void Esdf::RecomputeTiles(const TsdfMap& map, const std::vector<std::pair<Idx3, Idx3>>& tiles) {
     const Idx3 last{lo_.x + dims_.x - 1, lo_.y + dims_.y - 1, lo_.z + dims_.z - 1};
-    for (int ty = olo.y; ty <= ohi.y; ty += kTile) {
-        for (int tx = olo.x; tx <= ohi.x; tx += kTile) {
-            const Idx3 tlo{tx, ty, olo.z}, thi{std::min(tx + kTile - 1, ohi.x), std::min(ty + kTile - 1, ohi.y), ohi.z};
+    // Each tile writes only its own voxels and reads the map (const): any order, any thread, same bits.
+    cv::parallel_for_(cv::Range(0, int(tiles.size())), [&](const cv::Range& r) {
+        for (int i = r.start; i < r.end; ++i) {
+            const auto& [tlo, thi] = tiles[size_t(i)];
             const Idx3 slo{std::max(tlo.x - k_, lo_.x), std::max(tlo.y - k_, lo_.y), std::max(tlo.z - k_, lo_.z)};
             const Idx3 shi{std::min(thi.x + k_, last.x), std::min(thi.y + k_, last.y), std::min(thi.z + k_, last.z)};
             RecomputeTile(map, slo, shi, tlo, thi);
         }
-    }
-    last_updated_ = size_t(ohi.x - olo.x + 1) * size_t(ohi.y - olo.y + 1) * size_t(ohi.z - olo.z + 1);
+    });
+    last_updated_ = 0;
+    for (const auto& [tlo, thi] : tiles)
+        last_updated_ += size_t(thi.x - tlo.x + 1) * size_t(thi.y - tlo.y + 1) * size_t(thi.z - tlo.z + 1);
 }
 
 void Esdf::RecomputeTile(const TsdfMap& map, Idx3 slo, Idx3 shi, Idx3 olo, Idx3 ohi) {

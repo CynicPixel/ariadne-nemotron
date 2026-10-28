@@ -395,3 +395,17 @@ def test_spool_train_kernel_fails_when_a_budget_fails(tmp_path):
     assert r.returncode == 1, r.stdout + r.stderr
     out = json.loads((work / "remote.json").read_text())
     assert list(out["budgets"]) == ["first"] and out["budgets"]["first"]["rc"] != 0
+
+
+def test_live_iteration_prediction_is_capped_and_handles_bad_timings():
+    from types import SimpleNamespace
+    from ariadne_recon.live.trainer import LiveTrainer, TrainParams
+    trainer = LiveTrainer.__new__(LiveTrainer)
+    trainer.p = TrainParams(budget_ms=50)
+    assert trainer._iterations(SimpleNamespace(ms_iter=[])) == 3
+    assert trainer._iterations(SimpleNamespace(ms_iter=[10.0])) == 5
+    assert trainer._iterations(SimpleNamespace(ms_iter=[0.00001])) == 64
+    for value in (0.0, -1.0, float("nan")):
+        assert trainer._iterations(SimpleNamespace(ms_iter=[value])) == 3
+    trainer.p = TrainParams(iters=100)
+    assert trainer._iterations(SimpleNamespace(ms_iter=[10.0])) == 100

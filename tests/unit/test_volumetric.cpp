@@ -336,6 +336,33 @@ TEST(Volumetric, TsdfSurfaceAgreesWithOpenCvHashTsdfOracle) {   // §20.1: OpenC
     EXPECT_LE(Pct(d_cv_true, 0.95), 2 * p.voxel);   // the oracle itself, as SMOKE §4u measured it
 }
 
+TEST(Volumetric, ReservedTiledEsdfEqualsAnUnreservedRebuildBitForBit) {
+    // The live planner reserves the mission grid up front and updates by dirty tiles in parallel: neither may move
+    // a single value relative to a plain rebuild of the final map.
+    const Cam k;
+    TsdfMap map(RoomParams());
+    const cv::Mat S(k.h, k.w, CV_32F, cv::Scalar(0.01f));
+    Esdf inc(map.Voxel(), 0.50);
+    inc.Reserve({-80, -80, -10}, {120, 120, 70});
+    int incremental = 0;
+    for (const auto& T : Poses()) {
+        const auto dirty = map.Integrate(Frame(T, k, Render(T, k), S));
+        if (inc.Empty()) inc.Rebuild(map);
+        else incremental += inc.Update(map, dirty);
+    }
+    EXPECT_EQ(incremental, int(Poses().size()) - 1) << "inside the reserve every update is incremental";
+    Esdf full(map.Voxel(), 0.50);
+    full.Rebuild(map);
+    Idx3 lo, hi;
+    ASSERT_TRUE(map.Bounds(&lo, &hi));
+    for (int z = lo.z - 12; z <= hi.z + 12; ++z)
+        for (int y = lo.y - 12; y <= hi.y + 12; ++y)
+            for (int x = lo.x - 12; x <= hi.x + 12; ++x) {
+                ASSERT_EQ(inc.Egress({x, y, z}), full.Egress({x, y, z})) << x << "," << y << "," << z;
+                ASSERT_EQ(inc.Agent({x, y, z}), full.Agent({x, y, z})) << x << "," << y << "," << z;
+            }
+}
+
 TEST(Volumetric, IncrementalEsdfEqualsARebuildBitForBit) {
     const Cam k;
     TsdfMap map(RoomParams());

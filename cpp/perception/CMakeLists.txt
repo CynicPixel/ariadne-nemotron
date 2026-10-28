@@ -29,4 +29,8 @@ if(OpenCV_FOUND)
     ariadne::perception opencv_core opencv_imgproc opencv_features opencv_video opencv_dnn opencv_ximgproc
     opencv_stereo opencv_geometry opencv_photo opencv_ptcloud)
   add_library(ariadne::perception_opencv ALIAS ariadne_perception_opencv)
+  if(ARIADNE_WITH_ORT)
+    target_sources(ariadne_perception_opencv PRIVATE dnn/ort_session.cpp)
+    target_link_libraries(ariadne_perception_opencv PUBLIC ariadne_onnxruntime)
+  endif()
 endif()
