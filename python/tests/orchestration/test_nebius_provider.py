@@ -27,7 +27,9 @@ REPO = Path(__file__).resolve().parents[3]
 FIX = Path(__file__).parent / "fixtures"
 CORPUS = REPO / "evaluation" / "runs" / "live-agentic" / "live_loop" / "llm_live_run5_maze_short_90s"
 CFG = load_config(REPO / "configs" / "llm" / "nemotron.yaml")
-SUPER, LIGHTNING = (s["model"] for s in CFG["decision"]["chain"])
+PRIMARY, FALLBACK = (s["model"] for s in CFG["decision"]["chain"])   # D319: Lightning, then Super
+SUPER, LIGHTNING = "nvidia/nemotron-3-super-120b-a12b", "nvidia/Nemotron-3_5-Lightning"
+SPEC = {s["model"]: s for s in CFG["decision"]["chain"] + CFG["bench_models"]}
 PRICES = CFG["prices_usd_per_mtok"]
 
 
@@ -98,7 +100,7 @@ def _run(tmp: Path, script, chain=None, ledger_lines=(), max_calls=10, req=None)
 
 def test_recorded_super_loop_assigns(tmp_path):
     rec = recorded("nemotron-3-super-120b-a12b")
-    ans, fake, led = _run(tmp_path, rec)
+    ans, fake, led = _run(tmp_path, rec, chain=[SPEC[SUPER]])
     o = ans["orchestrator"]
     assert [t["tool"] for t in o["tool_calls"]] == ["list_candidates", "assign"]
     assert ans["assignments"] and {a["agent"] for a in ans["assignments"]} == {0, 1}
@@ -118,7 +120,7 @@ def test_recorded_super_loop_assigns(tmp_path):
 def test_recorded_lightning_and_nano_loops_assign(tmp_path):
     for i, (name, model) in enumerate((("Nemotron-3_5-Lightning", LIGHTNING),
                                        ("NVIDIA-Nemotron-3-Nano-30B-A3B", "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B"))):
-        spec = {**CFG["decision"]["chain"][1], "model": model}
+        spec = SPEC[model]
         rec = recorded(name)
         (tmp_path / str(i)).mkdir()
         ans, _, _ = _run(tmp_path / str(i), rec, chain=[spec])
@@ -128,17 +130,17 @@ def test_recorded_lightning_and_nano_loops_assign(tmp_path):
 
 def test_transport_error_falls_back_to_next_model(tmp_path):
     asg = [{"agent": 0, "candidate": 0, "reason": "a"}, {"agent": 1, "candidate": 0, "reason": "b"}]
-    ans, fake, led = _run(tmp_path, [_conn_error(), synth([("assign", {"assignments": asg})], model=LIGHTNING)])
+    ans, fake, led = _run(tmp_path, [_conn_error(), synth([("assign", {"assignments": asg})], model=FALLBACK)])
     o = ans["orchestrator"]
     assert [a["candidate"] for a in ans["assignments"]] == [0, 0]
-    assert (o["model"], o["fallback_used"], o["calls"]) == (LIGHTNING, True, 1)
+    assert (o["model"], o["fallback_used"], o["calls"]) == (FALLBACK, True, 1)
     assert "APIConnectionError" in o["errors"][0]
-    assert [s["model"] for s in fake.sent] == [SUPER, LIGHTNING]
+    assert [s["model"] for s in fake.sent] == [PRIMARY, FALLBACK]
     assert len(led.path.read_text().splitlines()) == 1     # the failed call cost nothing and is not on the ledger
 
 
 def test_budget_exceeded_refuses_without_call_or_fallback(tmp_path):
-    full = [{"ts_utc": "x", "model": SUPER, "prompt_tokens": 0, "completion_tokens": 0, "est_usd": 40.0}]
+    full = [{"ts_utc": "x", "model": PRIMARY, "prompt_tokens": 0, "completion_tokens": 0, "est_usd": 40.0}]
     ans, fake, _ = _run(tmp_path, [], ledger_lines=full)
     o = ans["orchestrator"]
     assert ans["assignments"] is None and fake.sent == []
@@ -152,7 +154,7 @@ def test_no_tool_call_and_length_are_not_fallbacks(tmp_path):
     assert ans["assignments"] is None and not o["fallback_used"] and o["calls"] == 2
     assert o["model_text"] == ["Agent 0 should go north."] and "finish_reason length" in o["errors"][0]
     assert fake.sent[1]["messages"][-1] == {"role": "user", "content": "Call a tool; finish with assign."}
-    assert {s["model"] for s in fake.sent} == {SUPER}
+    assert {s["model"] for s in fake.sent} == {PRIMARY}
 
 
 def test_bad_arguments_and_think_text_are_handled(tmp_path):
