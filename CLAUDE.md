@@ -81,9 +81,14 @@ directory). Upstream syncs follow the plan's sync protocol: fetch upstream, merg
 `upstream/integ/nemotron-base`, run `tools/scrub/apply.sh && tools/scrub/check.sh`, run the targeted tests, log it in
 STATUS. Resolve a hot-file conflict by taking upstream's side and re-applying the scrub.
 
-**Compute:** the two-job cap is machine-wide (fork + upstream). **FM is the single queue
-owner** and asks upstream M before each job. Long runs go to the background. GPU launches are
-cleared with M first. The user approves any AWS spend in-session.
+**Upstream contact (user rule, 2026-10-28):** consult **no** existing Ariadne session except upstream
+M, and M **only for live-path matters**: the integration base line, runtime perf, and GPU launches on
+the shared quota. FP and FV never message upstream sessions; anything they need from upstream goes
+through FM.
+
+**Compute:** the two-job cap is machine-wide (fork + upstream). **FM is the single queue owner**;
+before starting a job, FM checks machine load and running containers itself. Long runs go to the
+background. GPU launches are cleared with M first. The user approves any AWS spend in-session.
 
 ## 5. Conventions
 
