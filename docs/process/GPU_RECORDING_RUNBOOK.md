@@ -58,13 +58,26 @@ Stage what the `live_aws.sh` payload reads:
 ## 3a. Expected performance on g4dn.xlarge (M's rerun 046ee9, `3dad564`, classical chooser, 100 s)
 
 - **ORT CUDA:** all 6 ALIKED/LightGlue sessions (parent + 2 workers) run via `onnxruntime_cuda`. Worker `ms_aliked` is 7.7–9.6 s for the whole run (CPU: ~167 s in a7f27b).
-- **RTF: 0.42 end to end**, including startup. 4 vCPU is CPU-starved.
+- **RTF: 0.42 end to end**, including startup. 4 vCPU is CPU-starved (98% busy).
   - 38/43 frames per agent; track_mean 3.3–3.6 s.
   - 13 replans; 22 commands sent, 4 expired.
   - Command age p50 9.9 s (max 13.6 s); plan_fork mean 10.2 s (max 42 s).
-- **Largest remaining CPU consumer:** EigenPlaces on cv::dnn CPU in each collab worker (`ms_place` 136–144 s per worker).
-- **Implication for the take:** the console plays at sim time. At RTF below 1, any sped-up footage must be labelled with its factor
-  on screen. The Nemotron decision latency adds to the command age above.
+- **This is not a gain over earlier runs.** ec5893 (30 s) tracked 106–111 frames per agent at track_mean 0.6 s. The estimators are
+  starved, so the RTF is higher partly because less work got done.
+- **CPU by process** (pidstat mission average, cores):
+
+  | process | cores |
+  |---|---|
+  | `ariadne_live` (main + 2 estimators) | 1.36 |
+  | gz sim | 0.96 |
+  | ROS bridge `component_container` | 0.67 |
+  | both collab workers | 0.55 |
+  | python | 0.19 |
+
+  EigenPlaces `ms_place` (136–144 s per worker) is wall time, not CPU time. Moving it to ORT CUDA would free at most ~0.5 core; that gain is unmeasured and queued upstream after the exit crash.
+- **Likely lever (unmeasured):** sim + bridge take ~1.6 cores and scale with the camera rate. Use no value until M has measured one.
+- **Plan on roughly these numbers.** The console plays at sim time. At RTF below 1, any sped-up footage must show its factor on
+  screen. The Nemotron decision latency adds to the command age above.
 
 ## 4. Relaunch etiquette
 
