@@ -45,7 +45,7 @@
 | F0.3 | `integ/nemotron-base` | done | 140957f (S0) + ce351fb (S0.1); STATUS 2026-10-28 | M |
 | F0.4 | Bootstrap build/models/frontend | done | 7.5 min; LiveLink+Egress 17/17; STATUS 2026-10-28 09:20 | FM |
 | F0.5 | Nebius go/no-go + model IDs | done | D301; `evaluation/runs/nemotron/g0_20261028T205925Z/` | U/FM |
-| F1.1–F1.6 | Nemotron provider, bench, tests | not started | — | FP |
+| F1.1–F1.6 | Nemotron provider, bench, tests | partial | provider + ledger + live.sh merged 7be5b02; 22/22 in `ariadne-orchestrator:nemotron-1`; bench and G1 live run pending | FP |
 | F2.1–F2.7 | Evidence-seeking layer | not started | — | FP |
 | F3.1–F3.5 | Scrub, rebrand, console panel | not started | — | FV |
 | F4.1–F4.2 | Matched evaluation | not started | — | FP/FM |
