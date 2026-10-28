@@ -219,4 +219,17 @@ TEST(HardPair, OrtPathReproducesCvDnnOnTheSimExport) {
         EXPECT_GE(jac, 0.98) << pair;
     }
 }
+
+// ort_cuda either runs on CUDA or falls back for a CUDA reason (no GPU or libraries here), never because ONNX
+// Runtime's logger did not exist yet when the provider was appended (g4dn run 7b34cf, ort_session.cpp).
+TEST(HardPair, OrtCudaFallbackIsNeverTheLoggerOrder) {
+    const std::string dir = RefDir("ARIADNE_ALIKED_LG_SIM_REF");
+    REQUIRE_EXPORT(dir);
+    HardPairParams p = Params(dir, "upstream", cv::Size(1280, 720));
+    p.backend = "ort_cuda";
+    const HardPairMatcher m(p);
+    const std::string engine = m.Records().front().engine;
+    std::printf("ort_cuda engine: %s\n", engine.c_str());
+    EXPECT_EQ(engine.find("DefaultLogger"), std::string::npos) << engine;
+}
 #endif
