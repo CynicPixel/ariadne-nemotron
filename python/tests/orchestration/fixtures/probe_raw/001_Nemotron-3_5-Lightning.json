@@ -1,0 +1,97 @@
+{
+ "request": {
+  "model": "nvidia/Nemotron-3_5-Lightning",
+  "max_tokens": 300,
+  "temperature": 0.0,
+  "tools": [
+   {
+    "type": "function",
+    "function": {
+     "name": "assign",
+     "description": "Assign one exploration candidate to agent 0.",
+     "parameters": {
+      "type": "object",
+      "properties": {
+       "candidate": {
+        "type": "integer"
+       },
+       "reason": {
+        "type": "string"
+       }
+      },
+      "required": [
+       "candidate",
+       "reason"
+      ]
+     }
+    }
+   }
+  ],
+  "tool_choice": "auto",
+  "extra_body": {
+   "chat_template_kwargs": {
+    "enable_thinking": false
+   }
+  }
+ },
+ "n_messages": 2,
+ "latency_s": 0.661,
+ "response": {
+  "id": "chatcmpl-306c6ac7",
+  "choices": [
+   {
+    "finish_reason": "tool_calls",
+    "index": 0,
+    "logprobs": null,
+    "message": {
+     "content": null,
+     "refusal": null,
+     "role": "assistant",
+     "annotations": null,
+     "audio": null,
+     "function_call": null,
+     "tool_calls": [
+      {
+       "id": "call_ee46d74506b4410cb76abdd6",
+       "function": {
+        "arguments": "{\"candidate\":0,\"reason\":\"c0 has lower distance (2.1 m vs 6.3 m) and lower risk (0.1 vs 0.4) while offering more unknown cells (40 vs 12), making it the better exploration target for agent 0.\"}",
+        "name": "assign"
+       },
+       "type": "function"
+      }
+     ],
+     "reasoning": null,
+     "reasoning_content": null
+    },
+    "stop_reason": null,
+    "token_ids": null
+   }
+  ],
+  "created": 1793221754,
+  "model": "nvidia/Nemotron-3_5-Lightning",
+  "object": "chat.completion",
+  "metadata": null,
+  "moderation": null,
+  "service_tier": null,
+  "system_fingerprint": null,
+  "usage": {
+   "completion_tokens": 86,
+   "prompt_tokens": 493,
+   "total_tokens": 579,
+   "completion_tokens_details": {
+    "accepted_prediction_tokens": null,
+    "audio_tokens": null,
+    "reasoning_tokens": 0,
+    "rejected_prediction_tokens": null,
+    "text_tokens": null
+   },
+   "prompt_tokens_details": null,
+   "prompt_cache_hit_tokens": 0,
+   "prompt_cache_miss_tokens": 493
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null
+ }
+}

@@ -1,0 +1,20 @@
+# The inherited Bedrock chain (D84, agentic.md D156-D160), kept as an optional comparator only (CLAUDE.md §1).
+# These are the constants that lived at orchestrator.py:35-36 before D311.
+bedrock:
+  region: eu-north-1
+prices_usd_per_mtok: {}              # Bedrock calls are not on the Token Factory ledger
+decision:
+  max_calls: 10
+  chain:
+    - provider: bedrock
+      model: eu.amazon.nova-2-lite-v1:0
+      images: true                   # text + image input
+      max_tokens: 600
+      temperature: 0.0
+    - provider: bedrock
+      model: deepseek.v3.2
+      images: false                  # TEXT only (bedrock get-foundation-model, 2026-10-23)
+      max_tokens: 600
+      temperature: 0.0
+hypothesis:
+  enabled: false

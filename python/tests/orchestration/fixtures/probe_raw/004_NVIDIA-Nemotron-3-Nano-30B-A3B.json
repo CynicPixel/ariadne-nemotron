@@ -1,0 +1,78 @@
+{
+ "request": {
+  "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B",
+  "max_tokens": 300,
+  "temperature": 0.0,
+  "tools": [
+   {
+    "type": "function",
+    "function": {
+     "name": "assign",
+     "description": "Assign one exploration candidate to agent 0.",
+     "parameters": {
+      "type": "object",
+      "properties": {
+       "candidate": {
+        "type": "integer"
+       },
+       "reason": {
+        "type": "string"
+       }
+      },
+      "required": [
+       "candidate",
+       "reason"
+      ]
+     }
+    }
+   }
+  ],
+  "tool_choice": "auto",
+  "extra_body": {
+   "reasoning_effort": "none"
+  }
+ },
+ "n_messages": 2,
+ "latency_s": 0.922,
+ "response": {
+  "id": "chatcmpl-8addc18f-82c3-4100-a0ef-c9ab6f87a770",
+  "choices": [
+   {
+    "finish_reason": "stop",
+    "index": 0,
+    "logprobs": null,
+    "message": {
+     "content": null,
+     "refusal": null,
+     "role": "assistant",
+     "annotations": null,
+     "audio": null,
+     "function_call": null,
+     "tool_calls": [],
+     "reasoning": "\n<tool_call>\n<function=assign>\n<parameter=reason>\nHigher priority due to closer proximity and lower risk\n</parameter>\n<parameter=candidate>\n0\n</parameter>\n</function>\n</tool_call>\n"
+    },
+    "stop_reason": null,
+    "token_ids": null,
+    "routed_experts": null
+   }
+  ],
+  "created": 1793221757,
+  "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B",
+  "object": "chat.completion",
+  "metadata": null,
+  "moderation": null,
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.22.0-b08c96cd",
+  "usage": {
+   "completion_tokens": 43,
+   "prompt_tokens": 364,
+   "total_tokens": 407,
+   "completion_tokens_details": null,
+   "prompt_tokens_details": null
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null
+ }
+}
