@@ -4040,7 +4040,7 @@ external dependency bolted onto it.
 
 The MCP server lives in `python/orchestration/` and exposes exactly the tool list below. **Every tool call, and
 the vision-derived inputs that motivated it, is appended to the decision trace** — JSONL in the run artifact,
-which is the Agentic Vision "trace" deliverable.
+which is the decision-trace deliverable.
 
 Expose:
 
@@ -4072,12 +4072,11 @@ This directly satisfies the competition's agentic behavior requirement.
 
 Competition rules:
 - OpenCV 5 and AWS are hard requirements.
-- Agentic Vision requires vision output to influence a subsequent plan/tool/action/approval.
+- The agentic layer requires vision output to influence a subsequent plan/tool/action/approval.
 - The project must provide a trace and evaluation of failure handling/human control.
 
 Source:
-- competition file / challenge information captured in `opencv-ai-competition-2026(1).md`
-- official challenge: https://opencv26.devpost.com/
+- the earlier challenge brief (not part of this repository)
 
 ---
 

@@ -43,13 +43,12 @@ if OUT.exists():
 api.mkdir(parents=True)
 # Status as a static site serves it: no worker, no controller, no session.
 st.update(enabled=False, controller_remaining_s=0, commands=[], frame={}, session_id=None, state="offline", error=None)
-st["links"] = {"github": "https://github.com/CynicPixel/Ariadne", "paper": "/api/demo/paper",
+st["links"] = {"github": "https://github.com/CynicPixel/Ariadne", "paper": None,
                 "video": st["links"].get("video")}
 (api / "status").write_text(json.dumps(st))
 (api / "entrances").write_bytes(req("/entrances"))
 (api / "world.obj").write_bytes(req("/world.obj"))
 (api / "preview.png").write_bytes(req("/preview.png"))
-shutil.copy(REPO / "submission/report/ariadne_technical_report.pdf", api / "paper")
 web = REPO / "python/operator_console/static"
 shutil.copy(web / "demo.html", OUT / "index.html")
 shutil.copytree(web, OUT / "static", ignore=shutil.ignore_patterns("index.html", "splat.html", "demo.html"))

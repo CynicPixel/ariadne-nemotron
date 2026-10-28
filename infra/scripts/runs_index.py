@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Index every AWS run: id, instance, cost, outcome, local evidence directory and S3 location.
 
-    python3 infra/scripts/runs_index.py [--build DIR] [--out submission/runs/runs.csv]
+    python3 infra/scripts/runs_index.py [--build DIR] [--out build/runs/runs.csv]
 
 Sources, merged by run id (later sources fill gaps, never overwrite):
   - evaluation/runs/**/ledger_row.csv        per-run ledger rows committed with the evidence
@@ -27,7 +27,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--build", default="build")
     ap.add_argument("--bucket", default=os.environ.get("ARIADNE_ARTIFACT_BUCKET", "ariadne-836505524290-eun1"))
-    ap.add_argument("--out", default="submission/runs/runs.csv")
+    ap.add_argument("--out", default="build/runs/runs.csv")
     a = ap.parse_args()
     rows = {}
 

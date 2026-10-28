@@ -52,7 +52,6 @@ Order follows the data path, from the camera to the route home.
 | [`results/index.md`](results/index.md) | **The best result per subsystem**, each with its comparator, evidence path and scope, plus the list of things not to claim (failed gates and negative results). |
 | [`results/planning.md`](results/planning.md), [`results/radiometric.md`](results/radiometric.md), [`results/reconstruction.md`](results/reconstruction.md), [`results/wire-coding.md`](results/wire-coding.md) | Per-area result write-ups |
 | [`failure-cases.md`](failure-cases.md) | Failure cases and limitations |
-| [`report/`](report/) | LaTeX sources of the technical report and the two award evidence documents; `report/figures/src/` regenerates every figure |
 | [`../evaluation/README.md`](../evaluation/README.md) | The run-evidence layout and run ids |
 
 The original proposal is [`proposal.pdf`](proposal.pdf).

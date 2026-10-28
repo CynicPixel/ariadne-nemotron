@@ -1,5 +1,5 @@
 # Hosted demo: bounded UI telemetry, asynchronous supervision and the existing radio/collaboration stack.
-# The judges-live demo (design agentic.md §4, D169): live_llm_v1 with mode demo - the world holds RTF 1, keyframes
+# The live demo (design agentic.md §4, D169): live_llm_v1 with mode demo - the world holds RTF 1, keyframes
 # integrate in the background, maps are exported for the console, and the LLM is supervisory (the deterministic
 # pick continues while one request is pending; delayed answers are revalidated). NOT an evidence mode.
 # The live closed-loop runtime (design live-runtime.md D152-D154). The mapping / frontier / routing values are

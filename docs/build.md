@@ -25,7 +25,6 @@ Every command below goes through [`./ariadne`](../ariadne), a thin wrapper over 
 | `./ariadne cloud e2e` | the final integrated stack: full VIO, collaboration, Bedrock chooser, GPU splat. Writes the evidence bundle to `evaluation/runs/live-agentic/final_stack_e2e/` | g4dn.xlarge spot |
 | `./ariadne cloud premerge` | the replay gate on a fresh instance (stage, run, teardown) | c7i.4xlarge spot |
 | `./ariadne cloud arm64` | native Graviton4 build and full test suite | c8g.4xlarge spot |
-| `./ariadne cloud cool` | COOL protocol (`infra/cool/day1.sh`) on the COOL AMI | c8g.4xlarge |
 | `./ariadne cloud audit` | list every billable resource | none |
 | `./ariadne infra plan` / `apply` | Terraform: state bucket, artifact bucket, ECR, IAM runner role (S3 runs/*, ECR pull, Bedrock), GitHub OIDC, budget | none |
 
@@ -61,8 +60,7 @@ How cloud runs work:
 | `python/` | reconstruction service (gsplat), orchestration (Bedrock + MCP), operator console, world generation, analysis, demo film |
 | `ros2/`, `simulator/` | Gazebo Harmonic world, mover plugin, ROS 2 bridge |
 | `configs/` | every pipeline configuration (perception, SLAM, collaboration, mission, simulation) |
-| `infra/` | Dockerfiles, run scripts, AWS launchers, Terraform, COOL protocol |
+| `infra/` | Dockerfiles, run scripts, AWS launchers, Terraform |
 | `tests/` | unit, numerical, integration and protocol tests (C++ and Python) |
 | `evaluation/` | committed run evidence ([`evaluation/README.md`](../evaluation/README.md)) |
 | `docs/` | architecture, algorithms, design per subsystem, decisions, results, report sources ([`docs/README.md`](README.md)) |
-| `submission/` | competition deliverables ([`submission/README.md`](../submission/README.md)) |

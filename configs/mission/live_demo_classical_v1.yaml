@@ -1,4 +1,4 @@
-# The judges-live demo (design agentic.md §4, D169): live_llm_v1 with mode demo - the world holds RTF 1, keyframes
+# The live demo (design agentic.md §4, D169): live_llm_v1 with mode demo - the world holds RTF 1, keyframes
 # integrate in the background, no per-replan PNGs, and the LLM is supervisory and non-blocking (the deterministic
 # pick is commanded immediately; the answer applies at the next horizon or expires). NOT an evidence mode.
 # The live closed-loop runtime (design live-runtime.md D152-D154). The mapping / frontier / routing values are
