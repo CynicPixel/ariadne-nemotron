@@ -56,6 +56,20 @@ queues it). Spoken text spells numbers out. Beat sources and their branding audi
     for a responder.
   - D6r: In that same replan, Nemotron sent the robot the other way.
 
+  **Option (a), refutation → re-route:** D5r + D6r above.
+
+  **Option (b), high-risk pick → the operator decides.** G2 at t = 95 s had a real case (FM): Lightning picked a goal above
+  the risk threshold, and the C++ gate refused it without approval. Risk measures how tight the path is between the agent's
+  and the responder's clearance, with a threshold of 0.5 (agentic.md D158). Without an `approved` verdict the gate falls back
+  to the classical choice among the below-threshold candidates, or holds. Pick the D6 line that matches the take:
+  - D5b: Here Nemotron picked a goal down a narrow passage, risky enough that the gate will not send the robot on its own.
+  - D6b-approved: An operator looks at it, approves, and only then does the robot go.
+  - D6b-refused: Nobody approved it, so the gate refused it, and the robot took the safest candidate it had instead.
+    *(Use only if the trace shows a below-threshold fallback rather than a hold.)*
+
+  One take can show both (a) and (b) if it fits in 60 s. Narration then runs about 50 s of the 60, so keep D3 and drop D6
+  rather than rush the lines.
+
 **E What never comes from the model** (live + diagram)
 - E1: Three things never come from the model.
 - E2: A hypothesis's status comes from what the robots actually observed. Escape routes come from the planner, checked at forty
