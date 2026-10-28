@@ -81,6 +81,11 @@ def report(run: Path) -> dict:
     terminal = {h: e["status"] for h, e in final.items() if e["status"] in ("confirmed", "refuted")}
     n = sum(1 for h in predicts if h in terminal)
     hits = sum(1 for h, p in predicts.items() if h in terminal and (p == "passage") == (terminal[h] == "confirmed"))
+    created_t = {e["hypothesis_id"]: e["sim_t_s"] for e in hyp if e["event"] == "created"}
+    resolved_t = {e["hypothesis_id"]: e["sim_t_s"] for e in hyp if e["event"] == "status"
+                  and e["status"] in ("confirmed", "refuted")}
+    later = [h for h in predicts if h in terminal and resolved_t.get(h, -1) > created_t.get(h, 1e9)]
+    hits_later = sum(1 for h in later if (predicts[h] == "passage") == (terminal[h] == "confirmed"))
     first_res = min((e["sim_t_s"] for e in hyp if e["event"] == "status" and e["status"] in ("confirmed", "refuted")),
                     default=None)
     # chains
@@ -124,7 +129,10 @@ def report(run: Path) -> dict:
         "vl": {"calls": len(vl_calls), "by_outcome": vl_out,
                "est_usd": round(sum((e.get("orchestrator") or {}).get("est_usd") or 0 for e in vl_calls), 5),
                "hit_rate": {"n": n, "hits": hits, "rate": round(hits / n, 3) if n else None,
-                            "counts": "confirmed/refuted only; expired/unresolved/supported excluded"}},
+                            "counts": "confirmed/refuted only; expired/unresolved/supported excluded",
+                            "resolved_after_creation": {"n": len(later), "hits": hits_later},
+                            "note": "a hypothesis resolved at its creation replan was already decided by the map the "
+                                    "VL saw; resolved_after_creation is the predictive subset"}},
         "chains": {"targeted": len(chains), "complete": sum(c["complete"] for c in chains),
                    "complete_with_refutation": sum(c["complete"] and c["status_change"]["status"] == "refuted"
                                                    for c in chains), "items": chains}}
@@ -139,7 +147,8 @@ def markdown(r: dict) -> str:
            f"- Hypotheses: {h['total']} ({h['created_by_source']}; {h['vl_annotated']} VL-annotated); final "
            f"{h['final_status']}; first verified resolution at t = {h['first_verified_resolution_t_s']} s",
            f"- VL calls: {v['calls']} {v['by_outcome']}, est. USD {v['est_usd']}; hit rate {v['hit_rate']['hits']}/"
-           f"{v['hit_rate']['n']} ({v['hit_rate']['counts']})",
+           f"{v['hit_rate']['n']} ({v['hit_rate']['counts']}); resolved after creation "
+           f"{v['hit_rate']['resolved_after_creation']['hits']}/{v['hit_rate']['resolved_after_creation']['n']}",
            f"- G2 chains: {c['targeted']} targeted, {c['complete']} complete, {c['complete_with_refutation']} with a "
            "refutation", "", "| hyp | decision | agent | gate | motion | new slab | status change | next pick | complete |",
            "|---|---|---|---|---|---|---|---|---|"]
