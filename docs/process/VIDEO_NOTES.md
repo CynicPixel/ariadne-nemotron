@@ -64,3 +64,30 @@ Usable cuts from the old film, by time code:
 
 - Thumbnail: `docs/me/Ariadne_thumbnail.png` has no competition branding, but the logo carries a faint third-party stock-logo
   watermark. Use a clean thumbnail (a frame from the film) until the logo's licence is settled.
+
+## Edit pipeline: `python/video/tools/nemotron_cut.py`
+
+Host only (PyAV, Pillow and NumPy in a venv; H.264 + AAC encode tested). No Docker, nothing written to the tree: all
+output goes to `build/video/`.
+
+- **Preview:** 640×360 at 15 fps, about 70 s of CPU at `nice 19`. **Final:** 1080p30, CRF 18.
+- **Subtitles:** each subtitle is the TTS manifest's `spoken` text for the take that plays, with spelled-out names put back
+  (G P S → GPS). Long lines page in two-line pages.
+- **Mask:** 0.80 H to the bottom, in the decoded background colour (12, 16, 20). Content ends by 0.796 H, except B1's small
+  explanatory line, which the band removes whole.
+  - **Spot check [VERIFIED]:** the first, middle and last frame of all 5 reused cuts, rendered at 1080p
+    (`build/video/mask_check.png`). No old caption survives, no content is clipped, no seam.
+- **Honesty rules in the tool:**
+  - Missing footage is a red "PLACEHOLDER: NOT FOR RELEASE" card.
+  - `--final` refuses to render with any placeholder, missing or failed narration line, less than 60 s of live footage, or a
+    length of 3:00 or more.
+  - Live footage needs `--live-label`, and any speed-up other than 1× is printed in it.
+  - Reused beats carry "from the Ariadne film (pre-Nemotron)".
+- **Status:** narration batches 1 and 2a are all placed (17 lines, 0 failed checks). Still placeholders: C and D (live
+  footage) and F (F4 numbers).
+
+```bash
+python python/video/tools/nemotron_cut.py --film build/video_src/submission/video/ariadne_final_1080p60.mp4 \
+  --narration <b1>/narration <b2a>/narration [<b2>/narration] \
+  --live <recording.mp4> --live-label "LIVE · local run · <date UTC>" --live-in <s> --out build/video/cut.mp4 --final
+```
