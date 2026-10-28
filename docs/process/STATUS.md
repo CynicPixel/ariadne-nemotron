@@ -1,5 +1,18 @@
 # Status (newest first; times IST)
 
+## 2026-10-28 09:20 — F0.4 bootstrap done; S0.1 sync (FM)
+
+- **Bootstrap: 7.5 min wall** (copying caches 83 s, runtime build + `ctest -R 'LiveLink|Egress'` 17/17 at 415 s, `live.sh build` 40 s,
+  console esbuild 2 s).
+  - First attempt failed: Ariadne's `.cache/fetchcontent-docker/*-subbuild` caches embed host paths. Fix: keep `*-src`, drop
+    `*-subbuild`/`*-build`.
+  - Artifacts: `build/docker/cpp/runtime/ariadne_live` (non-ORT, for local Mesa wiring), `build/sim-plugins`,
+    `build/ros2/install`, `python/operator_console/static/dist`.
+- **S0.1:** merged upstream `ce351fb` (= perf `3dad564`: ORT env created before the CUDA provider). Without it every `_ortcuda` run
+  silently falls back to CPU. Incremental rebuild clean; LiveLink|Egress|HardPair pass (the model-env HardPair cases SKIP).
+- **M's g4dn.xlarge smoke 7b34cf:** classical chooser; OOM-killed at RT_MEM=6g ~2 min in. The F5 runbook uses 10g
+  (`docs/process/GPU_RECORDING_RUNBOOK.md`).
+
 ## 2026-10-28 ~10:00 — S0 sync done (FM): base line merged, worktrees opened, bootstrap started
 
 - **Base line:** upstream M delivered `integ/nemotron-base` at `140957f` = main `0ca523c` + `perf/live-decision-path` `fd63fcc`.

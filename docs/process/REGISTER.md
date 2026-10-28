@@ -41,9 +41,9 @@
 | # | item | state | evidence / missing | owner |
 |---|---|---|---|---|
 | F0.1 | Fork + remotes | done | STATUS 2026-10-28 | FM |
-| F0.2 | Scaffolding | partial | this commit | FM |
-| F0.3 | `integ/nemotron-base` | blocked (upstream M, ETA 12:00) | — | M |
-| F0.4 | Bootstrap build/models/frontend | not started | after F0.3 | FM |
+| F0.2 | Scaffolding | done | 5a8de3b, 6f3c25a, dd10b3f | FM |
+| F0.3 | `integ/nemotron-base` | done | 140957f (S0) + ce351fb (S0.1); STATUS 2026-10-28 | M |
+| F0.4 | Bootstrap build/models/frontend | done | 7.5 min; LiveLink|Egress 17/17; STATUS 2026-10-28 09:20 | FM |
 | F0.5 | Nebius go/no-go + model IDs | blocked (user signup) | — | U/FM |
 | F1.1–F1.6 | Nemotron provider, bench, tests | not started | — | FP |
 | F2.1–F2.7 | Evidence-seeking layer | not started | — | FP |
