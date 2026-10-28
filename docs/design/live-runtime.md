@@ -604,7 +604,7 @@ ARIADNE_DEMO_PYTHON=/tmp/ariadne-demo/bin/python bash infra/scripts/demo.sh 8080
 Deployment settings:
 
 - `ARIADNE_DEMO_MAX_AGENTS=2` (1–3): hardware-qualified fleet size.
-- `ARIADNE_DEMO_VIDEO_URL`: the demo video URL; defaults to the published film (https://youtu.be/yrbcvQKnfkA).
+- `ARIADNE_DEMO_VIDEO_URL`: the demo video URL; unset by default, which hides the link.
 - `ARIADNE_RECON_GPU_IMAGE`: installed CUDA trainer image; default
   `ariadne/recon-gpu:build`. CPU reconstruction uses `ARIADNE_RECON_IMAGE` as before.
 - `ARIADNE_LIVE_BINARY`: optional runtime binary path relative to the repository;
@@ -612,8 +612,8 @@ Deployment settings:
 - Existing image and AWS region settings are inherited by the launcher. Bedrock
   uses the existing credential path. Missing credentials fail visibly.
 
-GitHub points to the repository remote. Paper uses `docs/report/main.pdf` if present;
-that file currently belongs to uncommitted paper work. Video is
+GitHub points to the repository remote. There is no paper link;
+the video link is
 hidden until configured. Publishing these artifacts and hardware qualification
 remain deployment gates, not claims made by a local browser test.
 

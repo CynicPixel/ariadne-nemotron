@@ -94,7 +94,7 @@ struct LiveConfig {
                                            // lens. OFF by default for every live/demo/POC run - measured at
                                            // ~58 ms/frame, about half the lane - and the calibration then reports
                                            // the render pinhole with D = 0. `lens: true` restores the D41 operator.
-    bool demo = false;                     // D169 (agentic.md §4): judges-live mode. No lockstep, keyframes integrate
+    bool demo = false;                     // D169 (agentic.md §4): live demo mode. No lockstep, keyframes integrate
                                            // on a background thread, no per-replan PNGs, and the LLM is supervisory
                                            // and NON-BLOCKING: the deterministic pick is commanded immediately, the
                                            // answer applies at the next horizon or expires. Not an evidence mode.

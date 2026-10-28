@@ -12,7 +12,7 @@
 #   cpu  c8g.large   Graviton4, 2 vCPU/4 GiB. Smallest size COOL is priced for.
 #   cpux86 c7i.4xlarge Ubuntu 24.04 amd64, 16 vCPU/32 GiB: x86 CPU runs in the amd64 images.
 #   cpuarm c8g.4xlarge Ubuntu 24.04 arm64, 16 vCPU/32 GiB: native arm64 image builds (plan 0.2, infra/eval/arm64_aws.sh).
-#   cool c8g.4xlarge the COOL Marketplace AMI (Ubuntu 24.04); needs the subscription (infra/cool/day1.sh).
+#   cool c8g.4xlarge the COOL Marketplace AMI (Ubuntu 24.04); needs the Marketplace subscription.
 #   gpu  g4dn.xlarge NVIDIA T4 16 GB, 4 vCPU. Smallest full-GPU NVIDIA type;
 #                    needs the G/VT quota raised from 0.
 # Spot is the default market. On-demand is never a silent fallback: it costs

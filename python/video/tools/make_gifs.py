@@ -1,12 +1,12 @@
 """Devpost GIFs: standalone algorithm animations cut from the GIF-mode renders (ARIADNE_GIF=1: no chips, titles,
 panels or subtitles), tightly cropped onto the film's flat background. Each spec is one GIF: the scene, a time window,
 a playback speed-up, and the crop regions (in 1280x720 source pixels), laid out as rows that are stacked; regions in
-one row sit side by side. Labels move to submission/media/README.md.
+one row sit side by side. The GIFs carry no labels; captions go where the GIFs are used.
 
   ARIADNE_GIF=1 python/video/render.sh scenes/<scene>.py <Class> -qm --media_dir media_gif     # per scene, once
   docker run --rm --user $(id -u):$(id -g) -v $PWD:/repo -w /repo/python/video --entrypoint python \
       manimcommunity/manim:v0.22.0 tools/make_gifs.py [name ...]
-Output: submission/media/gifs/<name>.gif (~720 px wide, 15 fps, looping)
+Output: build/video/gifs/<name>.gif (~720 px wide, 15 fps, looping)
 """
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ import av
 from PIL import Image
 
 HERE = Path(__file__).resolve().parents[1]
-OUT = HERE.parents[1] / "submission/media/gifs"
+OUT = HERE.parents[1] / "build/video/gifs"
 BG = (14, 17, 22)  # style.BG
 FPS, WIDTH, GAP = 15, 720, 24
 T = 1280 / 480  # the crops were read off 480-px-wide contact sheets

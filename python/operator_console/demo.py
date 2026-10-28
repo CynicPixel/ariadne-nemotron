@@ -32,7 +32,7 @@ ID = re.compile(r"^[A-Za-z0-9_-]{1,100}$")
 ACTIVE = {"starting", "running", "stopping", "recovering"}
 PRESETS = ("maze_demo", "maze_short", "ci_tiny")
 router = APIRouter(prefix="/api/demo")
-VIDEO_URL = "https://youtu.be/yrbcvQKnfkA"
+VIDEO_URL = None  # set ARIADNE_DEMO_VIDEO_URL to show the film link
 
 
 def atomic(path: Path, value):
@@ -182,8 +182,8 @@ class Demo:
                     "scene": self.scene_spec, "meta": meta, "seq": self.seq,
                     "controller_remaining_s": max(0, 30 - (time.monotonic() - self.heartbeat)) if self.token else 0,
                     "reconstruction": self.recon_state,
-                    "links": {"github": "https://github.com/CynicPixel/Ariadne",
-                              "paper": "/api/demo/paper" if (self.root / "docs/report/main.pdf").is_file() else None,
+                    "links": {"github": "https://github.com/CynicPixel/ariadne-nemotron",
+                              "paper": None,
                               "video": os.environ.get("ARIADNE_DEMO_VIDEO_URL", VIDEO_URL)},
                     "frame": self.snapshot, "commands": list(self.commands.values())[-20:]}
 
@@ -649,14 +649,6 @@ def chunk(name: str, backend: str = "cpu_init", session: str | None = None):
     if not p.is_file():
         raise HTTPException(404, "Chunk replaced; refresh table")
     return FileResponse(p, media_type="application/octet-stream", headers={"Cache-Control": "private, max-age=31536000, immutable"})
-
-
-@router.get("/paper")
-def paper():
-    p = ROOT / "docs/report/main.pdf"
-    if not p.is_file():
-        raise HTTPException(404, "Paper not published")
-    return FileResponse(p, media_type="application/pdf")
 
 
 @router.get("/playback")

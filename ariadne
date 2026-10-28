@@ -14,14 +14,13 @@
 #   ./ariadne replay RUN_DIR SCENE     replay a recorded live run twice and compare the digests
 #   ./ariadne eval COLLAB RECON MISSION SCENE OUT   evaluation report over a run chain (trajectory, map,
 #                                      bytes, every registered metric and gate, figures, report.html)
-#   ./ariadne demo [PORT]              the web operator console (its frontend is hosted at https://www.ariadne.cynicpixel.xyz/)
+#   ./ariadne demo [PORT]              the web operator console
 #   ./ariadne cloud e2e                the final integrated stack on an AWS GPU instance (full evidence bundle)
 #   ./ariadne cloud premerge           the replay gate on an AWS spot instance (stage, run, teardown)
 #   ./ariadne cloud arm64              native Graviton4 build + full test suite
-#   ./ariadne cloud cool               COOL protocol on the Graviton4 COOL AMI (stock vs COOL, loader switch)
 #   ./ariadne cloud audit              list every billable AWS resource in the account
 #   ./ariadne infra plan|apply         Terraform for the AWS account (state bucket, ECR, S3, IAM, budget)
-#   ./ariadne runs                     rebuild submission/runs/runs.csv (every AWS run: cost, outcome, evidence, S3)
+#   ./ariadne runs                     rebuild build/runs/runs.csv (every AWS run: cost, outcome, evidence, S3)
 # ---------------------------------------------------------------------------
 set -euo pipefail
 cd "$(dirname "$(readlink -f "$0")")"
@@ -29,7 +28,7 @@ S=infra/scripts
 E=infra/eval
 OPENCV_TAG="${OPENCV_TAG:-5.0.0}"
 
-usage() { sed -n '3,24p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+usage() { sed -n '3,/^# ---/{/^# ---/!p}' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 need() { command -v "$1" >/dev/null || { echo "ariadne: '$1' is required" >&2; exit 1; }; }
 
 cmd="${1:-help}"; shift || true
@@ -65,7 +64,6 @@ case "$cmd" in
       e2e)      $E/final_stack_e2e.sh "$@" ;;
       premerge) $E/premerge_aws_launch.sh stage && $E/premerge_aws_launch.sh run; $E/premerge_aws_launch.sh teardown ;;
       arm64)    $E/arm64_aws_launch.sh run ;;
-      cool)     $S/spinup.sh run --profile cool --type c8g.4xlarge --max-minutes 90 -- 'bash infra/cool/day1.sh' ;;
       audit)    $S/aws_audit.sh "$@" ;;
       *)        usage 2 ;;
     esac ;;
