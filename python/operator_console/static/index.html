@@ -64,6 +64,18 @@
   form.dir .full { grid-column: 1 / -1; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
   h3 { font-size: .75rem; margin: 12px 0 6px; color: var(--muted); font-weight: 600; }
   canvas.pick { cursor: crosshair; }
+  /* Hypotheses panel (fork F3.5): what the records say; statuses come only from the slab verifier (D316). */
+  #hyp[hidden] { display: none; }
+  .hs { font-family: var(--mono); font-size: .7rem; padding: 0 7px; border-radius: 999px; border: 1px solid currentColor; white-space: nowrap; }
+  .hs.unresolved { color: var(--muted); } .hs.supported { color: var(--agent0); } .hs.confirmed { color: var(--ok); }
+  .hs.refuted { color: var(--target); } .hs.expired { color: var(--muted); text-decoration: line-through; }
+  .card.hyp { display: grid; grid-template-columns: 1fr 72px; gap: 4px 10px; }
+  .card.hyp > :not(a) { grid-column: 1; }
+  .card.hyp.settled { opacity: .78; }
+  .card.hyp > a { grid-row: 1 / span 3; grid-column: 2; }
+  .card.hyp img { width: 72px; height: 72px; object-fit: cover; border-radius: 3px; background: var(--unknown); display: block; }
+  .card.hyp .path { font-family: var(--mono); font-size: .7rem; color: var(--muted); }
+  #hyp-model { font-family: var(--mono); font-size: .75rem; overflow-wrap: anywhere; }
   @media (prefers-reduced-motion: reduce) { .bar > i { transition: none; } }
 </style>
 </head>
@@ -159,6 +171,14 @@
       </form>
       <h3>Recorded directives</h3>
       <ol class="timeline" id="directives" style="max-height:22vh"></ol>
+    </section>
+    <section id="hyp" hidden aria-label="Hypotheses">
+      <h2>Hypotheses</h2>
+      <div class="note" style="margin:-4px 0 8px">The model picks which hypothesis a move should test; only the slab verifier, reading observed
+        occupancy, changes a status.</div>
+      <div id="hyp-model" class="note">no model decision yet</div>
+      <div class="row" id="hyp-counts" style="display:flex; flex-wrap:wrap; gap:4px 6px; margin:8px 0"></div>
+      <div id="hyp-list" style="max-height:52vh; overflow-y:auto"><p class="empty">none yet</p></div>
     </section>
     <section>
       <h2>Bytes on the wire</h2>
@@ -604,6 +624,41 @@ setInterval(() => {
     camImg[i].src = `/api/cam/${sel.value}.jpg?t=${Date.now()}`;
   });
 }, 1000);
+
+// Hypotheses panel (fork F3.5): GET /api/hypotheses every 2 s. The page shows what the records say and computes nothing.
+const HYP_STATUSES = ["unresolved", "supported", "confirmed", "refuted", "expired"];
+const fmtS = (t) => (typeof t === "number" ? `${t.toFixed(1)} s` : "–");
+function renderHyp(d) {
+  $("hyp").hidden = !d.available;
+  if (!d.available) return;
+  const m = d.decision;
+  $("hyp-model").innerHTML = !m ? "no model decision yet" :
+    `decision ${esc(m.decision_id)} at ${fmtS(m.t_s)} · ${esc(m.provider ?? "")} <b>${esc(m.model ?? "?")}</b> · ` +
+    `${typeof m.latency_s === "number" ? m.latency_s.toFixed(2) + " s" : "–"} · ${esc(m.input_tokens)}→${esc(m.output_tokens)} tokens` +
+    (m.fallback_used ? ' · <span class="hs refuted">fallback model</span>' : "") +
+    (m.source && m.source !== "orchestrator" ? ` · <span class="hs unresolved">${esc(m.source)}</span>` : "");
+  $("hyp-counts").innerHTML = HYP_STATUSES.map((s) => `<span class="hs ${s}">${s} ${d.counts[s] ?? 0}</span>`).join("");
+  if (!d.hypotheses.length) { $("hyp-list").innerHTML = '<p class="empty">none yet</p>'; return; }
+  $("hyp-list").innerHTML = d.hypotheses.map((h) => {
+    const st = HYP_STATUSES.includes(h.status) ? h.status : "unresolved";
+    const img = h.map_url || h.keyframe_url;
+    const tg = h.targeted.length ? h.targeted.map((t) => `agent ${esc(t.agent)} at ${fmtS(t.sim_t_s)}`).join(", ") : "not yet";
+    const path = h.history.map((s) => `${esc(s.status)} ${fmtS(s.sim_t_s)}`).join(" → ");
+    return `<div class="card hyp ${st === "unresolved" || st === "supported" ? "" : "settled"}">
+      <div class="row"><b>${esc(h.hypothesis_id)}</b><span class="hs ${st}">${esc(st)}</span>
+        <span class="note">agent ${esc(h.agent_id)} · ${esc(h.source ?? "seed")}</span></div>
+      ${img ? `<a href="${esc(img)}" target="_blank" rel="noopener"><img src="${esc(img)}" alt="decision map for ${esc(h.hypothesis_id)}" loading="lazy"></a>` : ""}
+      <div class="why">${esc(h.claim)}</div>
+      ${h.evidence_goal ? `<div class="why">evidence goal: ${esc(h.evidence_goal)}</div>` : ""}
+      <div class="note">targeted by: ${tg}${h.verifier?.reason ? ` · verifier: ${esc(h.verifier.reason)}` : ""}</div>
+      <div class="path">${path}</div></div>`;
+  }).join("");
+}
+async function hypPoll() {
+  try { const r = await fetch("/api/hypotheses"); if (r.ok) renderHyp(await r.json()); } catch { /* the next poll retries */ }
+}
+setInterval(hypPoll, 2000);
+hypPoll();
 </script>
 </body>
 </html>

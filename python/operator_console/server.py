@@ -54,6 +54,8 @@ def demo_index():
 # linked from the console header - never blended with the GT model (user rule: own viewport).
 from operator_console.splat import router as splat_router  # noqa: E402
 app.include_router(splat_router)
+from operator_console.hypotheses_panel import router as hypotheses_router  # noqa: E402  fork F3.5: read-only panel
+app.include_router(hypotheses_router)
 _chain = None
 _live = None
 _live_log = None
