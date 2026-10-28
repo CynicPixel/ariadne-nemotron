@@ -57,3 +57,18 @@ s|; needs the subscription \(infra/cool/day1\.sh\)\.$|; needs the Marketplace su
 /^\| `submission\/` \| competition deliverables /d
 s/^(\| `infra\/` \| Dockerfiles, run scripts, AWS launchers, Terraform), COOL protocol \|/\1 |/
 s|\(stock OpenCV 5\.0\.0; COOL protocol: `infra/cool/`\)|(stock OpenCV 5.0.0)|
+
+# --- residual old-entry phrasing (not denylisted, but it reads as the earlier entry)
+# LICENSES/THIRD_PARTY.md: the licence was chosen (MIT, LICENSE, ef8befd 2026-10-27); the "undecided" note was stale
+/^`\[UNDECIDED — maintainer\]` Not yet chosen\. The competition rules do not mandate one:$/,/but the choice is not mine to make\.$/c\
+MIT: see [`LICENSE`](../LICENSE) (chosen by the maintainer on 2026-10-27). The third-party components above keep their own\
+licences.
+# cmake/AriadneDependencies.cmake
+s/^# something we assert\. The competition checks component licences individually\.$/# something we assert. Component licences are checked one by one (LICENSES\/THIRD_PARTY.md)./
+# docs/architecture.md
+s/^This directly satisfies the competition's agentic behavior requirement\.$/This is the agentic-behaviour requirement the design is held to./
+s/^Competition rules:$/Requirements of the original brief:/
+s/^The competition rewards credible engineering, not decorative agent terminology\.$/Credible engineering matters more than decorative agent terminology./
+s/^This is the correct use of the competition's heterogeneous cloud environment\.$/This is the correct use of a heterogeneous cloud environment./
+s/^no circumstances may "stereo-inertial" appear in the report while the estimator is vision-only; the competition$/no circumstances may "stereo-inertial" appear in any write-up while the estimator is vision-only; a reviewer/
+s/^rules explicitly allow rejection for misrepresenting capabilities\.$/may reject work that misrepresents its capabilities./

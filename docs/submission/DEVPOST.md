@@ -22,7 +22,7 @@ responder width (0.40 m).
 
 On top of that stack, the planner's most promising frontiers become open hypotheses, for example "this frontier leads to open space
 a responder can pass". On every replan, NVIDIA Nemotron, served by Nebius Token Factory, reads the planner's candidate tasks and the
-open hypotheses through MCP tools. It assigns each robot a candidate and names the hypothesis that move should settle.
+open hypotheses through MCP tools. It assigns each robot a candidate and can name the hypothesis that move should test.
 
 What the model never does:
 - **It never invents a goal.** A C++ gate accepts only the planner's own candidates, each used exactly once, and holds risky ones
@@ -37,9 +37,9 @@ classical chooser.
 
 ## How we built it
 
-- **Base: Ariadne.** It is our from-scratch stack: C++17 and OpenCV 5, stereo-inertial VIO, a robust collaborative pose graph that
-  refuses aliased loops, TSDF/ESDF mapping, CBBA allocation, D* Lite egress, and Gaussian-splat reconstruction. It runs in
-  Gazebo Harmonic under ROS 2 Jazzy.
+- **Base: Ariadne.** It is our own stack in C++17 on OpenCV 5. We wrote the stereo-inertial VIO, the robust collaborative pose
+  graph that refuses aliased loops, TSDF/ESDF mapping, CBBA allocation and D* Lite egress. Gaussian-splat reconstruction uses
+  gsplat, and the world runs in Gazebo Harmonic under ROS 2 Jazzy.
 - **Nemotron provider.** It talks to Token Factory through its OpenAI-compatible API.
   - Model IDs, prices and caps live in `configs/llm/nemotron.yaml`, copied from the endpoint's own `/v1/models` listing.
   - Decision tier: `nvidia/nemotron-3-super-120b-a12b`, with `nvidia/Nemotron-3_5-Lightning` as transport fallback, reasoning

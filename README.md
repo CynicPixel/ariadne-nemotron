@@ -14,7 +14,7 @@
 
 ```
 
-<h3 align="center">Evidence-Seeking Robot Teams for Collapsed Structures<br/>NVIDIA Nemotron on Nebius Token Factory, over a from-scratch multi-agent SLAM and egress stack</h3>
+<h3 align="center">Evidence-Seeking Robot Teams for Collapsed Structures<br/>NVIDIA Nemotron on Nebius Token Factory, over our own multi-agent SLAM and egress stack</h3>
 
 <p align="center">
   <img src="https://img.shields.io/badge/NVIDIA-Nemotron-76B900?logo=nvidia&amp;logoColor=white" alt="NVIDIA Nemotron"/>
@@ -56,7 +56,7 @@ cluttered, cut off from GPS and from reliable radio. A team of small stereo-came
 
 This fork makes the robots' next moves *evidence-seeking*, with **NVIDIA Nemotron served by Nebius Token Factory** in the loop. The
 planner's most promising frontiers become open *hypotheses* (for example "this frontier leads to open space a responder can pass").
-On every replan, Nemotron chooses which candidate task each robot takes, and names the hypothesis that task is meant to settle.
+On every replan, Nemotron chooses which candidate task each robot takes, and can name the hypothesis that task is meant to test.
 A deterministic verifier then settles each hypothesis from the occupancy the robots actually observe, never from the model's own
 words. Plain C++ checks every choice before anything moves, and a human approves anything risky.
 
@@ -137,7 +137,7 @@ each row links to its own design document.
 | **Validate and execute** | `cpp/runtime/tools/ariadne_live.cpp`<br>`simulator/plugins/kinematic_mover/` | C++ validates every choice; approval-gated actions wait for the operator; the mover refuses any goal outside the ESDF safety envelope. [live runtime](docs/design/live-runtime.md) |
 | **Responder egress** | `cpp/planning/route` | Responder-width lattice, multi-exit D* Lite, replanned as hazards appear. [egress](docs/design/egress.md) |
 | **Gaussian reconstruction** | `python/reconstruction/` | gsplat trains keyframe-anchored submaps on a GPU and moves each when its anchor pose is re-optimised. [reconstruction](docs/design/reconstruction.md) |
-| **Incident-command console** | `python/operator_console/` | The splat scene, egress route, fleet state, byte ledger, operator directives and approvals; a hypotheses panel is planned. [live runtime](docs/design/live-runtime.md) |
+| **Incident-command console** | `python/operator_console/` | The splat scene, egress route, fleet state, byte ledger, operator directives and approvals, and the hypotheses panel (status, evidence goal, verifier reason, the deciding model and its latency). [live runtime](docs/design/live-runtime.md) |
 | **Record and evaluate** | `cpp/runtime/`, `python/analysis/`, `infra/eval/` | MCAP record/replay with digest checks, a manifest for every run, metrics and gates. [evaluation harness](docs/design/evaluation-harness.md) |
 
 ## Results
@@ -187,7 +187,8 @@ Build, tests, the replay gate and classical live runs need no cloud credentials:
 With Nemotron in the loop:
 
 ```bash
-install -m 600 /dev/null ~/.config/ariadne/nebius.env  # then add one line: NEBIUS_API_KEY=<your Token Factory key>
+mkdir -p ~/.config/ariadne
+(umask 077; printf 'NEBIUS_API_KEY=%s\n' '<your Token Factory key>' > ~/.config/ariadne/nebius.env)   # mode 600
 ARIADNE_LIVE_CONFIG=configs/mission/live_llm_v1.yaml ./ariadne run maze_short 6 200
 ```
 

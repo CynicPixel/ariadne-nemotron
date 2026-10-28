@@ -31,7 +31,7 @@ queues it). Spoken text spells numbers out. Beat sources and their branding audi
 **B Stack** (old beats 3, 5, 6)
 - B1: Each robot builds its own map from two cameras and a motion sensor.
 - B2: They share only what is worth the bytes, and they refuse look-alike places that would tear the shared map apart.
-- B3: All of it is built from scratch, and every number we show links to a recorded run.
+- B3: The estimation, mapping and planning are our own code, and every number we show links to a recorded run.
 
 **C The question** (live)
 - C1: But a map is not a plan. Which opening should a robot check next, and why?
@@ -40,9 +40,9 @@ queues it). Spoken text spells numbers out. Beat sources and their branding audi
 **D Live loop** (live, 60 s; the narration covers about 45 s and the rest plays clean)
 - D1: The planner proposes candidate goals. Its most promising frontiers become open hypotheses: does this gap lead somewhere a
   person could follow?
-- D2: On every replan, Nemotron reads the candidates and the open hypotheses through tool calls, and assigns each robot a goal,
-  naming the hypothesis that goal should settle.
-- D3: Here is the model it used, and how long it took.
+- D2: On every replan, Nemotron reads the candidates and the open hypotheses through tool calls, and assigns each robot a goal.
+  It can name the hypothesis that goal should test.
+- D3: On screen: the Nemotron model that answered, and how long it took.
 - D4: That choice is only a proposal. A plain C plus plus gate checks it is one of the planner's own candidates, used exactly
   once, and anything risky waits for a person to approve it.
 - D5 *(if the take shows a status change)*: The robot drives in, and new observations come back. The verifier, not the model,
@@ -64,3 +64,22 @@ descriptive). A negative or mixed result is said as it is. -->
 - G3: The code is open, under the M I T licence.
 
 Word count: about 300 without F. With F at about 40 words, about 340, or about 2:15 of speech in a 2:45 cut.
+
+## Pacing: TTS batch 1 (Kaggle T4, 29 Oct; FM)
+
+17 lines, 86.7 s in total. With a 0.4 s gap between lines, each beat's narration against its slot:
+
+| beat | A | B | C | D (D1–D4) | E | G |
+|---|---|---|---|---|---|---|
+| narration | 9.8 s | 14.8 s | 9.3 s | 31.2 s | 16.3 s | 9.6 s |
+| slot | 14 s | 26 s | 12 s | 60 s | 20 s | 13 s |
+
+Every beat fits. Beat D keeps about 20 s of clean live footage after D5–D6.
+
+**Batch 2 re-runs or adds these lines:**
+- B3 and D2, reworded so they don't overclaim: we did not write gsplat, OpenCV or ROS, and `hypothesis_id` is optional in `assign`;
+- D3, rephrased: the first wording ran at 278–293 wpm and failed the rate check;
+- D5, D6 and F.
+
+G2's brand names need a human listen, because Whisper heard "Nemetron / Nabius". If they sound wrong, spell them phonetically in
+`spoken` only; the subtitle keeps the real names.
