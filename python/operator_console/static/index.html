@@ -76,19 +76,23 @@
   .card.hyp img { width: 72px; height: 72px; object-fit: cover; border-radius: 3px; background: var(--unknown); display: block; }
   .card.hyp .path { font-family: var(--mono); font-size: .7rem; color: var(--muted); }
   .card.hyp .contra { color: var(--warn); font-weight: 600; }
-  /* ?view=record (fork F6): one 1080p frame holds the map, the Hypotheses panel with both model lines, approvals and the
-     timeline. Layout only: the same data, nothing hidden that changes what the frame claims. */
+  /* ?view=record (fork F6): one 1080p frame holds the map with the agents' latest keyframes under it (what the VL model is
+     shown), the Hypotheses panel with both model lines, approvals and the timeline. Layout only: the same data, nothing hidden that changes what the frame claims. */
   body.record main { grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr) minmax(0, .85fr);
-    grid-template-rows: auto minmax(0, 1fr); grid-template-areas: "map hyp op" "map hyp tl";
+    grid-template-rows: auto minmax(0, 1fr); grid-template-areas: "map hyp op" "cams hyp tl";
     height: calc(100vh - 52px); padding-top: 10px; padding-bottom: 10px; gap: 10px; }
   body.record main > div { display: contents; }
   body.record main > section:first-child { grid-area: map; overflow: hidden; }
+  body.record section[aria-label="Agent cameras"] { grid-area: cams; overflow: hidden; }
+  /* the feature overlay is sized to the img box (camOv), so shrink the box itself; letterboxing would misplace the dots */
+  body.record section[aria-label="Agent cameras"] img { width: auto !important; max-width: 100%; max-height: 24vh; }
+  body.record section[aria-label="Agent cameras"] div[style*="position:relative"] { width: fit-content; max-width: 100%; }
   body.record #hyp { grid-area: hyp; overflow-y: auto; }
   body.record #hyp-list { max-height: none; overflow: visible; }
   body.record #operator { grid-area: op; overflow-y: auto; max-height: 34vh; }
   body.record section:has(#timeline) { grid-area: tl; overflow: hidden; display: flex; flex-direction: column; }
   body.record #timeline { max-height: none; flex: 1; }
-  body.record section[aria-label="Comms"], body.record section[aria-label="Agent cameras"], body.record section:has(#gauges),
+  body.record section[aria-label="Comms"], body.record section:has(#gauges),
   body.record #dirform, body.record #directives, body.record #proposals, body.record #operator > .note,
   body.record #operator h3:not(:first-of-type) { display: none; }
   body.record section { padding: 10px 12px; }
