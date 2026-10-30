@@ -1,0 +1,3 @@
+{"policy":"B0","rep":1,"rc":0,"wall_s":665,"run":"build/live/runs/live-20261028T221048Z-d01b","live_config":"configs/mission/live_llm_v1_b0.yaml","llm_config":"configs/llm/nemotron.yaml","git":"65f212e"}
+{"policy":"B2","rep":1,"rc":0,"wall_s":675,"run":"build/live/runs/live-20261028T222153Z-5da7","live_config":"configs/mission/live_llm_v1.yaml","llm_config":"configs/llm/nemotron_b2.yaml","git":"65f212e"}
+{"policy":"B4","rep":1,"rc":0,"wall_s":907,"run":"build/live/runs/live-20261028T223308Z-9e2d","live_config":"configs/mission/live_llm_v1.yaml","llm_config":"configs/llm/nemotron.yaml","git":"65f212e"}
