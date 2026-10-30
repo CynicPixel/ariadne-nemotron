@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 import textwrap
 import wave
@@ -271,9 +272,17 @@ def main_v2(a) -> None:
         for c in cues:
             if c["id"] == "D4":
                 c["offset_s"] = 37.0
+    used_fallback = []
+    if a.fallback:   # the EDL's own fallbacks: "fallback_if_<ID>_missing": [cues] replaces take <ID> with those cues
+        for key, repl in e.items():
+            m = re.fullmatch(r"fallback_if_(.+)_missing", key)
+            if m:
+                cues = [c for c in cues if c["id"] != m.group(1)] + [dict(c) for c in repl]
+                used_fallback.append(m.group(1))
+    takes = dict(t.split("=", 1) for t in (a.take or []))
     placed, missing, failed = [], [], []
     for c in cues:
-        wav = Path(a.v1_wav) if c["id"] == "V1" and a.v1_wav else Path(c["wav"])
+        wav = Path(takes[c["id"]]) if c["id"] in takes else Path(a.v1_wav) if c["id"] == "V1" and a.v1_wav else Path(c["wav"])
         if not wav.is_file():
             missing.append(c["id"])
             continue
@@ -294,7 +303,8 @@ def main_v2(a) -> None:
     live_s = sum(sg["t1"] - sg["t0"] for sg in segs if sg["kind"] == "live")
     holes = [sg["id"] for sg in segs if sg["kind"] == "placeholder"]
     print(f"cut {total:.2f} s · live {live_s:.1f} s · narration {len(placed)} takes placed, missing {missing or 'none'}, "
-          f"failed checks {failed or 'none'} · placeholders {holes or 'none'}" + (" · V1 fallback (D4 at 37.0)" if a.no_v1 else ""))
+          f"failed checks {failed or 'none'} · placeholders {holes or 'none'}" + (" · V1 fallback (D4 at 37.0)" if a.no_v1 else "")
+          + (f" · EDL fallback for {used_fallback}" if used_fallback else ""))
     if a.final:
         why = [m for m, bad in [(f"placeholders {holes}", holes), (f"missing narration {missing}", missing),
                                 (f"failed TTS checks {failed}", failed), (f"live {live_s:.1f} s < 60 s", live_s < 60),
@@ -384,6 +394,8 @@ def main() -> None:
     ap.add_argument("--edl", type=Path, help="v2: render this edit decision list (film, segments, anchored cues) instead")
     ap.add_argument("--v1-wav", help="v2: the V1 take (the EDL lists it as NEW)")
     ap.add_argument("--no-v1", action="store_true", help="v2: the EDL's fallback - drop V1, D4 at 37.0 s")
+    ap.add_argument("--fallback", action="store_true", help="v2+: apply the EDL's fallback_if_<ID>_missing cue lists")
+    ap.add_argument("--take", action="append", help="v2+: ID=PATH, a take the EDL lists as NEW (repeatable)")
     ap.add_argument("--no-film-label", dest="film_label", action="store_false",
                     help="v2: no corner label on film segments (the live-speed label always stays)")
     a = ap.parse_args()
