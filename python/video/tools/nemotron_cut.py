@@ -218,10 +218,157 @@ def fade(im: Image.Image, t: float, seg: dict, ramp: float = 0.25) -> Image.Imag
     return im if a >= 1 else Image.blend(Image.new("RGB", im.size, BG), im, max(0.0, a))
 
 
+# --- v2: an edit decision list from demo-video-session (build/video/plan_v2/edl_v2.json) -------------------------------
+# Segments carry their own output times; every narration take is anchored to a segment at an offset. Film segments are
+# the UNSPED film with its own burned-in subtitles kept (each reused take plays at its original cue time, so caption, voice
+# and picture match by construction); fork takes get a subtitle from their manifest's `spoken` text.
+HEADER_PATCH = (665, 6, 1130, 38)   # the console header's internal ids and replay-speed control, at 1920x1080
+
+
+def repo_card(W: int, H: int) -> Image.Image:
+    im = Image.new("RGB", (W, H), BG)
+    d = ImageDraw.Draw(im)
+    s = H / 1080
+    d.text((W / 2, H * .38), "Ariadne", font=font(int(110 * s), True), fill=TEXT, anchor="mm")
+    d.text((W / 2, H * .53), "github.com/CynicPixel/ariadne-nemotron", font=ImageFont.truetype(
+        "/usr/share/fonts/truetype/noto/NotoSansMono-Regular.ttf", int(40 * s)), fill=TEXT, anchor="mm")
+    d.text((W / 2, H * .62), "MIT licence", font=font(int(32 * s)), fill=DIM, anchor="mm")
+    return im
+
+
+def manifest_line(wav: Path) -> dict | None:
+    m = wav.parent.parent / "manifest.json"
+    if not m.is_file():
+        return None
+    return next((ln for ln in json.loads(m.read_text())["lines"] if ln["id"] == wav.stem), None)
+
+
+def main_v2(a) -> None:
+    W, H, fps = (640, 360, 15) if a.preview else (1920, 1080, 30)
+    s = H / 1080
+    e = json.loads(a.edl.read_text())
+    film = Path(e["film"])
+    segs = []
+    for sg in e["segments"]:
+        seg = {"id": sg["id"], "beat": sg["id"], "kind": sg["kind"], "t0": sg["out"][0], "t1": sg["out"][1],
+               "src": sg.get("src")}
+        if seg["kind"] == "live":
+            if not a.live:
+                seg["kind"] = "placeholder"
+            else:
+                seg["speed"] = (sg["src"][1] - sg["src"][0]) / (sg["out"][1] - sg["out"][0])
+                seg["label"] = f"{a.live_label.rstrip('.')}, shown at {seg['speed']:.1f}× speed."
+        segs.append(seg)
+    total = segs[-1]["t1"]
+    by_id = {sg["id"]: sg for sg in segs}
+
+    cues = [dict(c) for c in e["cues"]]
+    if a.no_v1:   # the plan's own fallback: no V1, D4 moves to 37.0, the rest of the live stays clean
+        cues = [c for c in cues if c["id"] != "V1"]
+        for c in cues:
+            if c["id"] == "D4":
+                c["offset_s"] = 37.0
+    placed, missing, failed = [], [], []
+    for c in cues:
+        wav = Path(a.v1_wav) if c["id"] == "V1" and a.v1_wav else Path(c["wav"])
+        if not wav.is_file():
+            missing.append(c["id"])
+            continue
+        with wave.open(str(wav)) as f:
+            assert (f.getnchannels(), f.getsampwidth(), f.getframerate()) == (1, 2, SR), f"{wav}: not 16-bit mono {SR}"
+            pcm = np.frombuffer(f.readframes(f.getnframes()), np.int16).astype(np.float32) / 32768
+        old = c["id"].startswith("old")
+        ln = None if old else manifest_line(wav)
+        if not old and (ln is None or not ln.get("ok", True)):
+            failed.append(c["id"])
+        t0 = by_id[c["anchor"]]["t0"] + c["offset_s"]
+        p = {"id": c["id"], "beat": c["anchor"], "t0": t0, "t1": t0 + len(pcm) / SR, "pcm": pcm, "src": str(wav),
+             "spoken": None if old else (ln or {}).get("spoken", "")}
+        if p["t1"] > by_id[c["anchor"]]["t1"] + 0.01:
+            sys.exit(f"narration {c['id']} ends at {p['t1']:.2f} s, after its segment {c['anchor']} ({by_id[c['anchor']]['t1']:.2f} s)")
+        placed.append(p)
+    subs = [p for p in placed if p["spoken"]]   # old takes: their captions are burned into the film
+    live_s = sum(sg["t1"] - sg["t0"] for sg in segs if sg["kind"] == "live")
+    holes = [sg["id"] for sg in segs if sg["kind"] == "placeholder"]
+    print(f"cut {total:.2f} s · live {live_s:.1f} s · narration {len(placed)} takes placed, missing {missing or 'none'}, "
+          f"failed checks {failed or 'none'} · placeholders {holes or 'none'}" + (" · V1 fallback (D4 at 37.0)" if a.no_v1 else ""))
+    if a.final:
+        why = [m for m, bad in [(f"placeholders {holes}", holes), (f"missing narration {missing}", missing),
+                                (f"failed TTS checks {failed}", failed), (f"live {live_s:.1f} s < 60 s", live_s < 60),
+                                (f"length {total:.1f} s >= 180 s", total >= 180)] if bad]
+        if why:
+            sys.exit("--final refused: " + "; ".join(why))
+
+    a.out.parent.mkdir(parents=True, exist_ok=True)
+    out = av.open(str(a.out), "w")
+    vs = out.add_stream("libx264", rate=fps)
+    vs.width, vs.height, vs.pix_fmt = W, H, "yuv420p"
+    vs.options = {"crf": "28", "preset": "ultrafast"} if a.preview else {"crf": "18", "preset": "medium"}
+    as_ = out.add_stream("aac", rate=SR)
+    as_.layout = "mono"
+    stills, k = [], 0
+    for seg in segs:
+        # segment edges here are not on the frame grid (24.8 s, 59.27 s, ...): place every segment on the global grid so
+        # frame pts stay strictly increasing across a cut (a repeated pts is EINVAL at the muxer) and the total is exact
+        f0, f1 = round(seg["t0"] * fps), round(seg["t1"] * fps)
+        n = f1 - f0
+        if seg["kind"] == "film":
+            src = film_frames(film, seg["src"][0], n / fps, fps, (W, H))
+        elif seg["kind"] == "live":
+            src = film_frames(a.live, seg["src"][0], n / fps, fps, (W, H), seg["speed"])
+        elif seg["kind"] == "card":
+            still = card(W, H, "F") if seg["id"] == "results" else repo_card(W, H)
+            src = (still.copy() for _ in range(n))
+        else:
+            still = placeholder(W, H, f"{seg['id']}: live console footage pending")
+            src = (still.copy() for _ in range(n))
+        for i, im in zip(range(n), src):
+            tt = (f0 + i) / fps
+            d = ImageDraw.Draw(im, "RGBA")
+            if seg["kind"] == "film":
+                d.text((16 * s, 12 * s), FILM_LABEL, font=font(int(20 * s)), fill=DIM)
+            if seg["kind"] == "live":   # the console header's internal ids and replay-speed control, in its own colour
+                x0, y0, x1, y1 = (round(v * s) for v in HEADER_PATCH)
+                d.rectangle([x0, y0, x1, y1], fill=im.getpixel((max(0, x0 - 4), (y0 + y1) // 2)))
+            im = fade(overlay(im, tt, {"kind": "v2", "label": seg.get("label")}, subs), tt, seg)
+            if a.stills and i in (0, n // 2, n - 1):
+                stills.append((f"{k:02d}_{seg['id']}_{i:04d}.png", im.copy()))
+            fr = av.VideoFrame.from_image(im)
+            fr.pts, fr.time_base = f0 + i, Fraction(1, fps)
+            for pk in vs.encode(fr):
+                out.mux(pk)
+        k += 1
+    for pk in vs.encode():
+        out.mux(pk)
+    mix = np.zeros(int(total * SR) + SR, np.float32)
+    for p in placed:
+        i0 = int(p["t0"] * SR)
+        mix[i0:i0 + len(p["pcm"])] += p["pcm"]
+    mix = np.clip(mix[: int(total * SR)], -1, 1)
+    for i in range(0, len(mix), 1024):
+        fr = av.AudioFrame.from_ndarray(mix[None, i:i + 1024], format="flt", layout="mono")
+        fr.sample_rate, fr.pts, fr.time_base = SR, i, Fraction(1, SR)
+        for pk in as_.encode(fr):
+            out.mux(pk)
+    for pk in as_.encode():
+        out.mux(pk)
+    out.close()
+    if a.stills:
+        a.stills.mkdir(parents=True, exist_ok=True)
+        for name, im in stills:
+            im.save(a.stills / name)
+    tl = {"out": str(a.out), "edl": str(a.edl), "length_s": round(total, 2), "live_s": live_s,
+          "segments": [{k_: v for k_, v in sg.items()} for sg in segs],
+          "narration": [{k_: p[k_] for k_ in ("id", "beat", "t0", "t1", "spoken", "src")} for p in placed],
+          "missing": missing, "placeholders": holes, "v1_fallback": bool(a.no_v1)}
+    a.out.with_suffix(".timeline.json").write_text(json.dumps(tl, indent=1))
+    print(f"wrote {a.out} and {a.out.with_suffix('.timeline.json')}")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--film", type=Path, required=True)
-    ap.add_argument("--narration", type=Path, nargs="+", required=True)
+    ap.add_argument("--film", type=Path)
+    ap.add_argument("--narration", type=Path, nargs="+")
     ap.add_argument("--cues", type=Path, default=Path("docs/submission/narration_cues.jsonl"))
     ap.add_argument("--live", type=Path)
     ap.add_argument("--live-label", default="")
@@ -231,7 +378,14 @@ def main() -> None:
     ap.add_argument("--preview", action="store_true", help="640x360 at 15 fps, fast encode")
     ap.add_argument("--stills", type=Path, help="also write the middle frame of every segment here (mask spot-check)")
     ap.add_argument("--final", action="store_true", help="refuse placeholders, missing lines, < 60 s live, >= 3:00")
+    ap.add_argument("--edl", type=Path, help="v2: render this edit decision list (film, segments, anchored cues) instead")
+    ap.add_argument("--v1-wav", help="v2: the V1 take (the EDL lists it as NEW)")
+    ap.add_argument("--no-v1", action="store_true", help="v2: the EDL's fallback - drop V1, D4 at 37.0 s")
     a = ap.parse_args()
+    if a.edl:
+        if a.live and not a.live_label:
+            sys.exit("--live needs --live-label (where and when it was recorded)")
+        return main_v2(a)
 
     W, H, fps = (640, 360, 15) if a.preview else (1920, 1080, 30)
     if a.live and not a.live_label:

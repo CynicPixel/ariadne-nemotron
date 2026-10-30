@@ -95,7 +95,7 @@ Matched comparison, one 90-second run per policy on one scene (n = 1 each: descr
 - **A fixed budget.** The credit is finite, so a ledger prices every call and refuses all calls at a hard cap.
 - **No GPU capacity for the live recording.** AWS spot placement for g4dn.xlarge scored 1/10 in our region during the window,
   so every live run ran CPU-only on a dev box at about 0.06–0.13× real time. The video's console footage is a live run (0.06×
-  real time, with the screen recorder on the same box) sped up 24× in the edit, labelled on screen.
+  real time, with the screen recorder on the same box) sped up 28.1× in the edit, labelled on screen.
 
 ## Accomplishments that we're proud of
 
