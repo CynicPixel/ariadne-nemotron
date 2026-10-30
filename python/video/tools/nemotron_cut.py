@@ -325,7 +325,7 @@ def main_v2(a) -> None:
         for i, im in zip(range(n), src):
             tt = (f0 + i) / fps
             d = ImageDraw.Draw(im, "RGBA")
-            if seg["kind"] == "film":
+            if seg["kind"] == "film" and a.film_label:
                 d.text((16 * s, 12 * s), FILM_LABEL, font=font(int(20 * s)), fill=DIM)
             if seg["kind"] == "live":   # the console header's internal ids and replay-speed control, in its own colour
                 x0, y0, x1, y1 = (round(v * s) for v in HEADER_PATCH)
@@ -381,6 +381,8 @@ def main() -> None:
     ap.add_argument("--edl", type=Path, help="v2: render this edit decision list (film, segments, anchored cues) instead")
     ap.add_argument("--v1-wav", help="v2: the V1 take (the EDL lists it as NEW)")
     ap.add_argument("--no-v1", action="store_true", help="v2: the EDL's fallback - drop V1, D4 at 37.0 s")
+    ap.add_argument("--no-film-label", dest="film_label", action="store_false",
+                    help="v2: no corner label on film segments (the live-speed label always stays)")
     a = ap.parse_args()
     if a.edl:
         if a.live and not a.live_label:
