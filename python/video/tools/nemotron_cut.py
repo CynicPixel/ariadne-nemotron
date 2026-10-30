@@ -256,7 +256,10 @@ def main_v2(a) -> None:
             if not a.live:
                 seg["kind"] = "placeholder"
             else:
-                seg["speed"] = (sg["src"][1] - sg["src"][0]) / (sg["out"][1] - sg["out"][0])
+                seg["speed"] = (sg["src"][1] - sg["src"][0]) / (sg["out"][1] - sg["out"][0])   # per live segment
+                stated = sg.get("speed") or sg.get("N")
+                if stated and abs(stated - seg["speed"]) > 0.02 * seg["speed"]:
+                    sys.exit(f"segment {sg['id']}: stated speed {stated} != src/out {seg['speed']:.2f}; the label must be true")
                 seg["label"] = f"{a.live_label.rstrip('.')}, shown at {seg['speed']:.1f}× speed."
         segs.append(seg)
     total = segs[-1]["t1"]
