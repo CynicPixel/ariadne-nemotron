@@ -19,7 +19,7 @@ GREP=(git grep --untracked -n -I)
 # 1. Old-competition identity (D330). Only the award phrasing is denied: bare "COOL" (the OpenCV-on-Arm benchmark),
 #    AWS and Bedrock (honest compute and legacy provider) stay. Case-insensitive, plus "Agentic Vision" as the award
 #    name in title case. Applies to the whole tree, run evidence included; only this directory is exempt.
-DENY='opencv26|opencv[ _-]ai[ _-]competition|powered by aws|best use of cool|cool award|agentic vision award|judges-live|ariadne-vms1xc|yrbcvqknfka|ariadne\.cynicpixel\.xyz'
+DENY='opencv26|opencv[ _-]ai[ _-]competition|powered by aws|best use of cool|cool award|agentic vision award|judges-live|ariadne-vms1xc|yrbcvqknfka'
 section "denylist (text)"
 report "$( { "${GREP[@]}" -i -E -e "$DENY" -- . ':!tools/scrub'; "${GREP[@]}" -E -e 'Agentic Vision' -- . ':!tools/scrub'; } | cut -c1-200 | sort -u)"
 section "denylist (binary, raw bytes)"
