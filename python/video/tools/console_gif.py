@@ -28,6 +28,7 @@ def main() -> None:
     ap.add_argument("--crop", default="10,40,1390,800", help="x0,y0,x1,y1 in the take's pixels")
     ap.add_argument("--width", type=int, default=640)
     ap.add_argument("--label", default="Live run on maze_short_6")
+    ap.add_argument("--colors", type=int, default=128, help="palette size (fewer = smaller file)")
     a = ap.parse_args()
 
     box = tuple(int(v) for v in a.crop.split(","))
@@ -49,7 +50,7 @@ def main() -> None:
             tw = d.textlength(label, font=f)
             d.rounded_rectangle([6, 6, 18 + tw, 28], radius=5, fill=(0, 0, 0, 180))
             d.text((12, 8), label, font=f, fill=(230, 160, 40))
-            frames.append(im.convert("P", palette=Image.ADAPTIVE, colors=128))
+            frames.append(im.convert("P", palette=Image.ADAPTIVE, colors=a.colors))
             k += 1
             if k == len(ticks):
                 break
