@@ -94,8 +94,8 @@ Matched comparison, one 90-second run per policy on one scene (n = 1 each: descr
 - **Model IDs that differ between sources** (casing, `3_5` vs `3.5`). The config takes IDs only from the live endpoint's own listing.
 - **A fixed budget.** The credit is finite, so a ledger prices every call and refuses all calls at a hard cap.
 - **No GPU capacity for the live recording.** AWS spot placement for g4dn.xlarge scored 1/10 in our region during the window,
-  so every live run ran CPU-only on a dev box at about 0.13× real time. The video's console footage is a live run sped up
-  <!-- TODO(FM): N from the final render -->N× in the edit, labelled on screen.
+  so every live run ran CPU-only on a dev box at about 0.06–0.13× real time. The video's console footage is a live run (0.06×
+  real time, with the screen recorder on the same box) sped up 24× in the edit, labelled on screen.
 
 ## Accomplishments that we're proud of
 
