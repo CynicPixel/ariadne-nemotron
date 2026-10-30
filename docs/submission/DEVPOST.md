@@ -52,7 +52,7 @@ classical chooser.
   - Hypotheses are anchored to planner candidates and re-associated by centroid across replans.
   - The verifier tests responder-clearance crossings on the observed occupancy slab.
   - `hypotheses.jsonl` and `verifier.jsonl` line up with the decision trace. The operator console's hypotheses panel shows them
-    live, with both models' IDs and latencies, and replays them in mission time for a finished run.
+    live, with both models' IDs and latencies.
 
 - **Evaluation.**
   - A replay bench picks the decision model.
@@ -94,8 +94,8 @@ Matched comparison, one 90-second run per policy on one scene (n = 1 each: descr
 - **Model IDs that differ between sources** (casing, `3_5` vs `3.5`). The config takes IDs only from the live endpoint's own listing.
 - **A fixed budget.** The credit is finite, so a ledger prices every call and refuses all calls at a hard cap.
 - **No GPU capacity for the live recording.** AWS spot placement for g4dn.xlarge scored 1/10 in our region during the window,
-  so every live run ran CPU-only on a dev box at about 0.13× real time. The video's console footage is a 1× replay of a recorded
-  run, labelled as such.
+  so every live run ran CPU-only on a dev box at about 0.13× real time. The video's console footage is a live run sped up
+  <!-- TODO(FM): N from the final render -->N× in the edit, labelled on screen.
 
 ## Accomplishments that we're proud of
 

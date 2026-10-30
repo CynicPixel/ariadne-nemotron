@@ -158,8 +158,9 @@ def placeholder(W: int, H: int, what: str) -> Image.Image:
     return im
 
 
-def film_frames(path: Path, t0: float, dur: float, fps: int, size: tuple[int, int]):
-    """One frame per output tick: the first decoded frame at or after the tick."""
+def film_frames(path: Path, t0: float, dur: float, fps: int, size: tuple[int, int], speed: float = 1.0):
+    """One frame per output tick (dur output seconds at fps; a tick advances speed/fps source seconds): the first decoded
+    frame at or after the tick."""
     with av.open(str(path)) as c:
         v = c.streams.video[0]
         v.thread_type = "AUTO"
@@ -167,7 +168,7 @@ def film_frames(path: Path, t0: float, dur: float, fps: int, size: tuple[int, in
             c.seek(int(max(0.0, t0 - 1.0) / v.time_base), stream=v)
         except (av.error.FFmpegError, OverflowError, ValueError):
             pass
-        ticks = [t0 + i / fps for i in range(round(dur * fps))]
+        ticks = [t0 + i * speed / fps for i in range(round(dur * fps))]
         k = 0
         for f in c.decode(v):
             while k < len(ticks) and f.time >= ticks[k] - 0.5 / 60:
@@ -175,7 +176,7 @@ def film_frames(path: Path, t0: float, dur: float, fps: int, size: tuple[int, in
                 k += 1
             if k == len(ticks):
                 return
-    sys.exit(f"{path}: ended before {t0 + dur:.1f} s")
+    sys.exit(f"{path}: ended before {t0 + dur * speed:.1f} s")
 
 
 def overlay(im: Image.Image, t: float, seg: dict, placed: list[dict]) -> Image.Image:
@@ -235,7 +236,7 @@ def main() -> None:
     W, H, fps = (640, 360, 15) if a.preview else (1920, 1080, 30)
     if a.live and not a.live_label:
         sys.exit("--live needs --live-label (where and when it was recorded)")
-    live_label = a.live_label + (f" · {a.live_speed:g}× speed" if a.live_speed != 1 else "")
+    live_label = f"{a.live_label.rstrip('.')}, shown at {a.live_speed:g}× speed."   # the real speed, on every live frame
 
     segs, t, live_cursor = [], 0.0, a.live_in
     for beat, kind, arg in EDL:
@@ -285,9 +286,7 @@ def main() -> None:
         if seg["kind"] == "film":
             src = film_frames(a.film, seg["src"][0], seg["t1"] - seg["t0"], fps, (W, H))
         elif seg["kind"] == "live":
-            sp = a.live_speed
-            src = (im for k, im in enumerate(film_frames(a.live, seg["src"][0], (seg["t1"] - seg["t0"]) * sp, fps, (W, H)))
-                   if k % max(1, round(sp)) == 0) if sp >= 1 else film_frames(a.live, seg["src"][0], seg["t1"] - seg["t0"], fps, (W, H))
+            src = film_frames(a.live, seg["src"][0], seg["t1"] - seg["t0"], fps, (W, H), a.live_speed)
         elif seg["kind"] == "card":
             still = card(W, H, seg["beat"])
             src = (still.copy() for _ in range(n))
