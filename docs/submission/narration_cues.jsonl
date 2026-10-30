@@ -14,7 +14,7 @@
 {"id": "E1", "beat": "E", "spoken": "Three things never come from the model.", "take": "E1"}
 {"id": "E2", "beat": "E", "spoken": "A hypothesis's status comes from what the robots actually observed. Escape routes come from the planner, checked at forty centimetres, the width of a responder. And spending has a hard cap.", "take": "E2"}
 {"id": "E3", "beat": "E", "spoken": "If the model fails, the robots carry on with the classical planner.", "take": "E3"}
-{"id": "F1", "beat": "F", "spoken": "On one scene, with one run per policy, we compared the classical planner with Nemotron, with and without hypotheses. One run each is a demonstration, not a statistic, and every number on screen links to its run.", "take": "F1"}
+{"id": "F1", "beat": "F", "spoken": "One ninety-second run each. With the evidence loop, the verifier confirmed sixteen and refuted three of twenty-five hypotheses, and in all three runs the gate executed zero unsafe actions. Single runs, descriptive only.", "take": "F1"}
 {"id": "G1", "beat": "G", "spoken": "Robots that look for evidence before people go in.", "take": "G1"}
 {"id": "G2", "beat": "G", "spoken": "Nemotron on Nebius chooses; observed geometry decides.", "take": "G2"}
 {"id": "G3", "beat": "G", "spoken": "The code is open, under the M I T licence.", "take": "G3"}
