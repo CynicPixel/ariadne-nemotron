@@ -121,8 +121,31 @@ def card(W: int, H: int, beat: str) -> Image.Image:
                font=font(int(34 * s)), fill=TEXT, anchor="mm")
         d.text((W / 2, H * .66), "github.com/CynicPixel/ariadne-nemotron · MIT", font=ImageFont.truetype(
             "/usr/share/fonts/truetype/noto/NotoSansMono-Regular.ttf", int(32 * s)), fill=TEXT, anchor="mm")
+    elif beat == "F":   # F4, verbatim from FP (evaluation/runs/nemotron/f4_20261028T221048Z/); n = 1 per policy
+        d.text((W * .07, H * .10), "One 90-second run per policy: descriptive, n = 1, no ranking claim",
+               font=font(int(46 * s), True), fill=TEXT)
+        rows = [("Evidence loop", ["Nemotron 3.5 Lightning made 34 of 36 agent decisions via Nebius Token Factory",
+                                   "25 hypotheses (12 from Super-VL, 13 seeded from the planner): 16 confirmed, 3 refuted, first at t = 10 s",
+                                   "all 9 hypothesis-targeted decisions closed the chain: decision, gate, motion, verdict, next pick"]),
+                ("Safety gate", ["0 unsafe actions executed, in all three runs",
+                                 "3 risky picks waited the full 60 s for an operator approval that never came; 1 fell back to classical"]),
+                ("Mapped free cells at 90 s", ["classical 18,984 · Nemotron 19,061 · Nemotron + evidence loop 22,668",
+                                               "no run found a responder-width (0.40 m) egress route within 90 s"])]
+        y = H * .22
+        for k, vs in rows:
+            d.text((W * .07, y), k, font=font(int(36 * s), True), fill=OK)
+            y += 50 * s
+            for v in vs:
+                d.text((W * .07, y), v, font=font(int(29 * s)), fill=TEXT)
+                y += 40 * s
+            y += 26 * s
+        for i, line in enumerate(["LLM cost per 90 s run: Nemotron USD 0.072 · evidence loop USD 0.154 + VL 0.072 · "
+                                  "\"confirmed\" = confirmed on the map at that time",
+                                  "evidence: evaluation/runs/nemotron/f4_20261028T221048Z/ · one scene (maze_short_6), "
+                                  "CPU-only dev box at about 0.13x real time"]):
+            d.text((W * .07, H * (.72 + .035 * i)), line, font=font(int(24 * s)), fill=DIM)
     else:
-        return placeholder(W, H, f"beat {beat}: results card (F4 numbers pending)")
+        return placeholder(W, H, f"beat {beat}: no card")
     return im
 
 
@@ -140,7 +163,10 @@ def film_frames(path: Path, t0: float, dur: float, fps: int, size: tuple[int, in
     with av.open(str(path)) as c:
         v = c.streams.video[0]
         v.thread_type = "AUTO"
-        c.seek(int(max(0.0, t0 - 1.0) / v.time_base), stream=v)
+        try:   # a browser-recorded WebM often has no cues (seek index): decode from the start instead
+            c.seek(int(max(0.0, t0 - 1.0) / v.time_base), stream=v)
+        except (av.error.FFmpegError, OverflowError, ValueError):
+            pass
         ticks = [t0 + i / fps for i in range(round(dur * fps))]
         k = 0
         for f in c.decode(v):
@@ -221,8 +247,6 @@ def main() -> None:
             seg.update(src=(live_cursor, live_cursor + dur * a.live_speed), label=live_label)
             live_cursor += dur * a.live_speed
         elif kind == "live":
-            seg["kind"] = "placeholder"
-        elif kind == "card" and beat == "F":
             seg["kind"] = "placeholder"
         segs.append(seg)
         t += dur

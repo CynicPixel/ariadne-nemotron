@@ -19,7 +19,7 @@ queues it). Spoken text spells numbers out. Beat sources and their branding audi
 | C The question | 0:40–0:52 | live console, overview | final |
 | D Live loop | 0:52–1:52 | **live console: hypotheses panel, model ID + latency, an approval click, a hypothesis settling** | lines D5–D6 depend on what the take shows |
 | E What never comes from the model | 1:52–2:12 | live console + the gate/verifier diagram | final |
-| F Results | 2:12–2:32 | the F4 table/plot | **pending F4** <!-- TODO(FM): F4 numbers --> |
+| F Results | 2:12–2:32 | the F4 results card (`nemotron_cut.py`, from f4_20261028T221048Z, n = 1, incl. no egress found) | final |
 | G Close | 2:32–2:45 | re-rendered architecture card (Token Factory band, era-labelled results), repo URL | final |
 
 ## Narration
@@ -88,8 +88,9 @@ queues it). Spoken text spells numbers out. Beat sources and their branding audi
   centimetres, the width of a responder. And spending has a hard cap.
 - E3: If the model fails, the robots carry on with the classical planner.
 
-**F Results** <!-- TODO(FM): two or three sentences from the F4 table only (B0 classical vs B2/B4 Nemotron; per seed,
-descriptive). A negative or mixed result is said as it is. -->
+**F Results** (the F4 card)
+- F1: One ninety-second run each. With the evidence loop, the verifier confirmed sixteen and refuted three of twenty-five
+  hypotheses, and in all three runs the gate executed zero unsafe actions. Single runs, descriptive only.
 
 **G Close**
 - G1: Robots that look for evidence before people go in.

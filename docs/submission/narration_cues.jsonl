@@ -9,9 +9,12 @@
 {"id": "D2", "beat": "D", "spoken": "On every replan, Nemotron reads the candidates and the open hypotheses through tool calls, and assigns each robot a goal. It can name the hypothesis that goal should test.", "take": "D2"}
 {"id": "D3", "beat": "D", "spoken": "On screen: the Nemotron model that answered, and how long it took.", "take": "D3"}
 {"id": "D4", "beat": "D", "spoken": "That choice is only a proposal. A plain C plus plus gate checks it is one of the planner's own candidates, used exactly once, and anything risky waits for a person to approve it.", "take": "D4"}
+{"id": "D5", "beat": "D", "spoken": "Here, Nemotron's reason said low risk, but the goal it actually sent ran through a twenty-nine centimetre bottleneck.", "take": "D5"}
+{"id": "D6", "beat": "D", "spoken": "The gate checks the candidate's own risk, not the model's words. It refused, and the robot took the safe frontier instead.", "take": "D6"}
 {"id": "E1", "beat": "E", "spoken": "Three things never come from the model.", "take": "E1"}
 {"id": "E2", "beat": "E", "spoken": "A hypothesis's status comes from what the robots actually observed. Escape routes come from the planner, checked at forty centimetres, the width of a responder. And spending has a hard cap.", "take": "E2"}
 {"id": "E3", "beat": "E", "spoken": "If the model fails, the robots carry on with the classical planner.", "take": "E3"}
+{"id": "F1", "beat": "F", "spoken": "One ninety-second run each. With the evidence loop, the verifier confirmed sixteen and refuted three of twenty-five hypotheses, and in all three runs the gate executed zero unsafe actions. Single runs, descriptive only.", "take": "F1"}
 {"id": "G1", "beat": "G", "spoken": "Robots that look for evidence before people go in.", "take": "G1"}
 {"id": "G2", "beat": "G", "spoken": "Nemotron on Nebius chooses; observed geometry decides.", "take": "G2"}
 {"id": "G3", "beat": "G", "spoken": "The code is open, under the M I T licence.", "take": "G3"}
