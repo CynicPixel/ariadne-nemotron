@@ -41,7 +41,7 @@
 
 ## Demo
 
-<!-- TODO(FM): YouTube link (under 3:00, at least 60 s of the live application) and a thumbnail without third-party marks. -->
+<!-- TODO(FM): YouTube link (under 3:00, at least 60 s of the live application). -->
 Video: *to be linked.* Also: [results](docs/results/index.md) · [docs map](docs/README.md) ·
 [agentic-layer design](docs/design/nemotron-evidence-loop.md)
 
@@ -145,10 +145,24 @@ each row links to its own design document.
 
 ### Nemotron evidence loop (this fork)
 
-<!-- TODO(FM): the F4 matched evaluation (B0 classical, B2 Nemotron without hypotheses, B4 Nemotron with hypotheses; per seed,
-descriptive): time to first verified resolution, egress-found time, fallback / invalid / out-of-set rates, gate rejections,
-latency p50/p95, tokens, cost. Link evaluation/runs/nemotron/eval_<ts>/. Report negative results as they are. -->
-*Pending the matched evaluation.* Every Nemotron number here will link to a run with a manifest and a logged live call.
+One 90-second run per policy on one scene (`maze_short_6`), on a CPU-only dev box at about 0.13× real time:
+[evaluation/runs/nemotron/f4_20261028T221048Z/](evaluation/runs/nemotron/f4_20261028T221048Z/). **n = 1 each: descriptive, no
+ranking claim.**
+
+| | B0 classical | B2 Nemotron | B4 Nemotron + evidence loop |
+|---|---|---|---|
+| decisions | 36 classical | 36 Nemotron | 34 Nemotron, 2 classical fallbacks |
+| mapped free cells at 90 s | 18,984 | 19,061 | 22,668 |
+| responder egress route (0.40 m) found | no | no | no |
+| unsafe actions executed | 0 | 0 | 0 |
+| operator approval requests | 0 | 0 | 3 (unattended: each waited 60 s; 1 fell back) |
+| hypotheses | — | — | 25 (12 Super-VL, 13 seeded): 16 confirmed, 3 refuted, 6 supported; first resolution at 10 s; all 9 targeted decisions closed the chain |
+| decision latency p50 / p95 (wall clock, loaded box) | — | 5.6 / 9.8 s | 8.0 / 73 s |
+| LLM cost, estimated | — | USD 0.072 | USD 0.154 + VL 0.072 |
+
+"Confirmed" means confirmed on the map at that time. Earlier live runs, with worked examples:
+[G1](evaluation/runs/nemotron/g1_live-20261028T212942Z-2eda/) (a refutation that re-routes a robot) and
+[G2](evaluation/runs/nemotron/g2_live-20261028T214744Z-b93e/) (a risky pick the gate refused).
 
 ### Inherited from Ariadne (pre-Nemotron)
 
@@ -175,7 +189,7 @@ What does not hold up, and why: [docs/results/index.md](docs/results/index.md) (
 ## Quick start
 
 Build, tests, the replay gate and classical live runs need no cloud credentials: the gate replays a committed recording and
-`infra/scripts/models.sh` fetches model weights from their public upstream sources.<!-- TODO(FM): confirm on a fresh clone (H8). -->
+`infra/scripts/models.sh` fetches model weights from their public upstream sources.
 
 ```bash
 ./ariadne build                        # pinned images: OpenCV 5 base, core (+ full C++ suite), simulator, orchestrator
@@ -198,7 +212,18 @@ ARIADNE_LIVE_CONFIG=configs/mission/live_llm_v1.yaml ./ariadne run maze_short 6 
 `docker --env-file`; no script reads it, and it is never written to a run directory. Spend is appended to
 `~/.config/ariadne/nebius_spend.jsonl`.
 
-<!-- TODO(FM): the zero-credential bench replay (python -m orchestration.bench over the recorded corpus, D318). -->
+The decision-tier bench ([D318](docs/decisions.md)) replays recorded chooser requests through each model and scores every answer
+with the gate's rules. Its committed result is
+[bench_20261028T211611Z/table.md](evaluation/runs/nemotron/bench_20261028T211611Z/table.md). `--dry-run` prints the cost estimate
+and stops; without it, the bench makes live Token Factory calls, each one recorded on the spend ledger.
+
+```bash
+touch ~/.config/ariadne/nebius_spend.jsonl
+docker run --rm -u "$(id -u):$(id -g)" -v "$PWD":/work --env-file ~/.config/ariadne/nebius.env \
+  -v ~/.config/ariadne/nebius_spend.jsonl:/spend/nebius_spend.jsonl -e NEBIUS_SPEND_LEDGER=/spend/nebius_spend.jsonl \
+  ariadne-orchestrator:nemotron-1 python -m orchestration.bench \
+  --corpus evaluation/runs/live-agentic/live_loop/llm_live_run5_maze_short_90s --n 10 --dry-run
+```
 
 [docs/build.md](docs/build.md) has every command, the pinned dependencies and the repository layout.
 

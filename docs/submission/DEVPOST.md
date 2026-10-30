@@ -51,13 +51,13 @@ classical chooser.
 - **Evidence loop.**
   - Hypotheses are anchored to planner candidates and re-associated by centroid across replans.
   - The verifier tests responder-clearance crossings on the observed occupancy slab.
-  - `hypotheses.jsonl` and `verifier.jsonl` line up with the decision trace. <!-- TODO(FM): add "and the operator console
-    shows them live" only if the F3.5 panel ships -->
+  - `hypotheses.jsonl` and `verifier.jsonl` line up with the decision trace. The operator console's hypotheses panel shows them
+    live, with both models' IDs and latencies, and replays them in mission time for a finished run.
 
 - **Evaluation.**
   - A replay bench picks the decision model.
   - A matched evaluation compares a classical baseline, Nemotron without hypotheses and Nemotron with hypotheses, per seed.
-  <!-- TODO(FM): seeds, scenes, duration -->
+  - One scene (`maze_short_6`), 90 s per run, one run per policy (n = 1), on a CPU-only dev box at about 0.13× real time.
 - **Compute.** The simulator runs on AWS EC2 or a local GPU. Inference is on Token Factory.
 
 ## Results
@@ -69,9 +69,18 @@ hypothesis-targeted decisions the whole chain closed: targeted move, gate accept
 different next pick. Model cost for the run: about USD 0.25.
 [Run report](https://github.com/CynicPixel/ariadne-nemotron/tree/main/evaluation/runs/nemotron/g1_live-20261028T212942Z-2eda)
 
-<!-- TODO(FM): the F4 table, descriptive and per seed: time to first verified resolution, egress-found time, fallback / invalid /
-out-of-set rates, gate rejections (proposals rejected, counted apart from actions executed), latency p50/p95, tokens, cost.
-Negative or mixed results are stated as they are. -->
+Matched comparison, one 90-second run per policy on one scene (n = 1 each: descriptive, no ranking claim):
+- **Evidence loop (B4):** Nemotron 3.5 Lightning made 34 of 36 agent decisions via Nebius Token Factory. Super-VL and the
+  planner's top candidates seeded 25 hypotheses; the slab verifier (0.40 m responder clearance) confirmed 16 and refuted 3,
+  the first at t = 10 s. All 9 hypothesis-targeted decisions completed the hypothesis → decision → gate → motion → verdict →
+  next-pick chain.
+- **Safety:** the C++ gate executed 0 unsafe actions in all three runs. Nemotron asked the (absent) operator to approve 3 risky
+  picks; each waited the full 60 s window, and one crossed the 120 s answer window and fell back to the classical choice.
+- **Coverage:** mapped free cells at 90 s were 18,984 (classical), 19,061 (Nemotron) and 22,668 (Nemotron + evidence loop).
+  **No run found a responder-width egress route within 90 s.**
+- **Cost:** decision-tier LLM USD 0.072 (Nemotron) and USD 0.154 (evidence loop) per 90 s run, plus USD 0.072 for the VL tier.
+- "Confirmed" means confirmed on the map at that time; later map revisions can contradict it, and the console shows when they do.
+  [F4 evidence](https://github.com/CynicPixel/ariadne-nemotron/tree/main/evaluation/runs/nemotron/f4_20261028T221048Z)
 
 ## Challenges we ran into
 
@@ -80,11 +89,13 @@ Negative or mixed results are stated as they are. -->
 - **A model can explain one goal and send another.** In our second live run (G2, t = 95 s), Lightning's reason described a
   low-risk frontier, but the candidate index it sent pointed elsewhere: risk 0.575 against a 0.5 threshold, through a 0.29 m
   bottleneck. The C++ gate checks the chosen candidate's own risk, not the model's words. It refused the pick without operator
-  approval, and the robot took the classical choice instead. <!-- TODO(FM): link evaluation/runs/nemotron/g2_live-20261028T214744Z-b93e/
-  (decisions/t95000ms.json, t95000ms.choice.json, the t=95 trace records) once FP commits it; check the facts against it -->
+  approval, and the robot took the classical choice instead.
+  [G2 evidence](https://github.com/CynicPixel/ariadne-nemotron/tree/main/evaluation/runs/nemotron/g2_live-20261028T214744Z-b93e)
 - **Model IDs that differ between sources** (casing, `3_5` vs `3.5`). The config takes IDs only from the live endpoint's own listing.
 - **A fixed budget.** The credit is finite, so a ledger prices every call and refuses all calls at a hard cap.
-- **GPU capacity for the live recording.** <!-- TODO(FM): what happened, stated plainly (F5) -->
+- **No GPU capacity for the live recording.** AWS spot placement for g4dn.xlarge scored 1/10 in our region during the window,
+  so every live run ran CPU-only on a dev box at about 0.13× real time. The video's console footage is a 1× replay of a recorded
+  run, labelled as such.
 
 ## Accomplishments that we're proud of
 
@@ -94,7 +105,13 @@ Negative or mixed results are stated as they are. -->
 
 ## What we learned
 
-<!-- TODO(FM): one or two lessons from the F4 numbers, e.g. where hypotheses changed decisions and where they did not. -->
+- **A model's stated reason is not evidence.** Twice the model's text disagreed with the facts: a VL reason at G0 cited a robot
+  position the prompt never contained, and in G2 a decision's reason described one goal while its index pointed at another.
+  Both were caught only because the gate and the verifier read the real numbers, not the words.
+- **"Confirmed" is a statement about a map that keeps changing.** In G2, map revisions later contradicted three settled
+  hypotheses. We now surface the contradiction instead of hiding it or flipping the status.
+- **Human approval has a cost in a live loop.** With no operator present in F4, each of three risky picks blocked for 60 s, and
+  one decision missed its answer window.
 
 ## What's next
 
