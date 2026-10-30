@@ -79,6 +79,17 @@ queues it). Spoken text spells numbers out. Beat sources and their branding audi
   - D6c: The gate checks the candidate's own risk, not the model's words. It refused, and the robot took the safe frontier
     instead.
 
+  **Chosen for the final cut (30 Oct, beat D = a live B4 run sped up in the edit): variant A**, the G2 case attributed to
+  "an earlier recorded run", because the sped-up take cannot be narrated event-by-event:
+  - D5 (variant A): In an earlier recorded run, Nemotron's reason said low risk, but the goal it actually sent ran through a
+    twenty-nine centimetre bottleneck.
+  - D6: The gate checks the candidate's own risk, not the model's words. It refused, and the robot took the safe frontier
+    instead.
+
+  Variant B, only if the take visibly shows an approval request at the moment the line plays:
+  - D5b: Here Nemotron picked a goal down a narrow passage, risky enough that the gate will not send the robot on its own.
+  - D6b: No operator is at the console in this run, so the request lapses, and the gate never executes the risky goal.
+
   Final D5/D6 lines are chosen after the take is seen. One take can show both (a) and (b) if it fits in 60 s. Narration then runs about 50 s of the 60, so keep D3 and drop D6
   rather than rush the lines.
 

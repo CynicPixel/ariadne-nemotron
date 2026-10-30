@@ -81,7 +81,7 @@
   body.record main { grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr) minmax(0, .85fr);
     grid-template-rows: auto minmax(0, 1fr); grid-template-areas: "map hyp op" "cams hyp tl";
     height: calc(100vh - 52px); padding-top: 10px; padding-bottom: 10px; gap: 10px; }
-  body.record main > div { display: contents; }
+  body.record main > div { display: contents !important; }   /* beats the column's inline display:grid */
   body.record main > section:first-child { grid-area: map; overflow: hidden; }
   body.record section[aria-label="Agent cameras"] { grid-area: cams; overflow: hidden; }
   /* the feature overlay is sized to the img box (camOv), so shrink the box itself; letterboxing would misplace the dots */
