@@ -202,10 +202,27 @@ def overlay(im: Image.Image, t: float, seg: dict, placed: list[dict]) -> Image.I
     return im
 
 
+def chunks(text: str, long: int = 110) -> list[str]:
+    """Caption pages at sentence boundaries; a sentence longer than `long` splits at the comma nearest its middle,
+    recursively, so pages are balanced and never break mid-clause."""
+    out = []
+    for sent in re.split(r"(?<=[.?!])\s+", text.strip()):
+        stack = [sent]
+        while stack:
+            x = stack.pop(0)
+            cuts = [m.end() for m in re.finditer(r",\s", x)]
+            if len(x) <= long or not cuts:
+                out.append(x.strip())
+                continue
+            c = min(cuts, key=lambda i: abs(i - len(x) / 2))
+            stack[:0] = [x[:c].strip(), x[c:].strip()]
+    return out
+
+
 def page(text: str, frac: float, width: int = 64) -> str:
-    """The two-line page of `text` showing at fraction `frac` of its line, pages timed in proportion to their length."""
-    rows = textwrap.wrap(text, width)
-    pages = ["\n".join(rows[i:i + 2]) for i in range(0, len(rows), 2)]
+    """The page of `text` showing at fraction `frac` of its line, pages timed in proportion to their length."""
+    # one line up to 76 characters; longer pages wrap into two near-equal lines (no orphaned last word)
+    pages = [c if len(c) <= 76 else "\n".join(textwrap.wrap(c, max(width // 2, len(c) // 2 + 6))) for c in chunks(text)]
     total, acc = sum(len(x) for x in pages), 0
     for pg in pages:
         acc += len(pg)
@@ -224,6 +241,7 @@ def fade(im: Image.Image, t: float, seg: dict, ramp: float = 0.25) -> Image.Imag
 # the UNSPED film with its own burned-in subtitles kept (each reused take plays at its original cue time, so caption, voice
 # and picture match by construction); fork takes get a subtitle from their manifest's `spoken` text.
 HEADER_PATCH = (665, 6, 1130, 38)   # the console header's internal ids and replay-speed control, at 1920x1080
+LABEL_BOX = (1140, 6, 1905, 38)     # the header's empty right side: the live speed label goes here
 
 
 def repo_card(W: int, H: int) -> Image.Image:
@@ -343,7 +361,13 @@ def main_v2(a) -> None:
             if seg["kind"] == "live":   # the console header's internal ids and replay-speed control, in its own colour
                 x0, y0, x1, y1 = (round(v * s) for v in HEADER_PATCH)
                 d.rectangle([x0, y0, x1, y1], fill=im.getpixel((max(0, x0 - 4), (y0 + y1) // 2)))
-            im = fade(overlay(im, tt, {"kind": "v2", "label": seg.get("label")}, subs), tt, seg)
+                # the speed label, right-aligned in the header's empty right side (title and mission time stay readable)
+                px = 20
+                while px > 12 and d.textlength(seg["label"], font=font(round(px * s), True)) > (LABEL_BOX[2] - LABEL_BOX[0]) * s:
+                    px -= 1
+                d.text((LABEL_BOX[2] * s, (LABEL_BOX[1] + LABEL_BOX[3]) / 2 * s), seg["label"],
+                       font=font(round(px * s), True), fill=(176, 84, 0), anchor="rm")
+            im = fade(overlay(im, tt, {"kind": "v2"}, subs), tt, seg)
             if a.stills and i in (0, n // 2, n - 1):
                 stills.append((f"{k:02d}_{seg['id']}_{i:04d}.png", im.copy()))
             fr = av.VideoFrame.from_image(im)
