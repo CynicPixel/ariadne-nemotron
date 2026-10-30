@@ -29,7 +29,8 @@ What the model never does:
 - **It never invents a goal.** A C++ gate accepts only the planner's own candidates, each used exactly once, and holds risky ones
   for a human.
 - **It never decides a hypothesis.** A deterministic verifier sets status from the occupancy the robots observed: unresolved,
-  supported, confirmed, refuted or expired.
+  supported, confirmed, refuted or expired. Confirmed means confirmed on the map at that time: later map revisions can contradict
+  it, and the operator console shows when they do.
 - **It never computes a route.** Routes come from the planner.
 - **It never sees simulator ground truth.**
 
@@ -76,6 +77,11 @@ Negative or mixed results are stated as they are. -->
 
 - **Keeping the model honest about geometry.** In the first live call, the VL model's free-text reason cited a robot position the
   prompt never contained. That is why model text is never evidence, and hypothesis status comes only from the verifier.
+- **A model can explain one goal and send another.** In our second live run (G2, t = 95 s), Lightning's reason described a
+  low-risk frontier, but the candidate index it sent pointed elsewhere: risk 0.575 against a 0.5 threshold, through a 0.29 m
+  bottleneck. The C++ gate checks the chosen candidate's own risk, not the model's words. It refused the pick without operator
+  approval, and the robot took the classical choice instead. <!-- TODO(FM): link evaluation/runs/nemotron/g2_live-20261028T214744Z-b93e/
+  (decisions/t95000ms.json, t95000ms.choice.json, the t=95 trace records) once FP commits it; check the facts against it -->
 - **Model IDs that differ between sources** (casing, `3_5` vs `3.5`). The config takes IDs only from the live endpoint's own listing.
 - **A fixed budget.** The credit is finite, so a ledger prices every call and refuses all calls at a hard cap.
 - **GPU capacity for the live recording.** <!-- TODO(FM): what happened, stated plainly (F5) -->
