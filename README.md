@@ -46,6 +46,10 @@
 Video (2:53): https://youtu.be/aoIGG4V3038. Also: [results](docs/results/index.md) · [docs map](docs/README.md) ·
 [agentic-layer design](docs/design/nemotron-evidence-loop.md)
 
+## Architecture
+
+![Ariadne architecture: per-agent SLAM, selective collaboration, robust shared map, NVIDIA Nemotron on Nebius Token Factory for evidence-seeking decisions, responder egress and reconstruction](docs/architecture/ariadne_architecture.png)
+
 ## What it does
 
 After a structural collapse, the spaces that most need searching are the ones people cannot safely enter: dark,
