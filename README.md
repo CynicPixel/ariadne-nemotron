@@ -34,7 +34,7 @@
   <a href="#architecture">Architecture</a> •
   <a href="#results">Results</a> •
   <a href="#quick-start">Quick start</a> •
-  <a href="#lineage">Lineage</a>
+  <a href="#where-things-are">Layout</a>
 </p>
 
 ---
@@ -54,7 +54,7 @@ cluttered, cut off from GPS and from reliable radio. A team of small stereo-came
 - hand incident command a 3D Gaussian-splat model of what they saw, and an egress route checked at
   responder width (a gap a robot fits through is not a route for a person).
 
-This fork makes the robots' next moves *evidence-seeking*, with **NVIDIA Nemotron served by Nebius Token Factory** in the loop. Nemotron's
+Ariadne makes the robots' next moves *evidence-seeking*, with **NVIDIA Nemotron served by Nebius Token Factory** in the loop. Nemotron's
 vision model looks at the map the robots built and their camera keyframes, and proposes *hypotheses* about the planner's candidate
 goals (for example "this frontier opens onto a passage a responder can use"). On every replan, Nemotron chooses which candidate task each robot takes, and can name the hypothesis that task is meant to test.
 A deterministic verifier then settles each hypothesis from the occupancy the robots actually observe, never from the model's own
@@ -121,7 +121,7 @@ flowchart LR
   P -- "responder route" --> O
 ```
 
-The modules below the agentic layer are Ariadne's, unchanged. The full design is [`docs/architecture.md`](docs/architecture.md);
+The full design is [`docs/architecture.md`](docs/architecture.md);
 each row links to its own design document.
 
 | module | code | what it does |
@@ -134,7 +134,7 @@ each row links to its own design document.
 | **Selective collaboration** | `cpp/collaboration/`<br>`cpp/runtime/agent/` | EigenPlaces retrieval, spectral-λ₂ selection under a byte budget, ALIKED + LightGlue + PnP verification, an elected broker, and a radio model with partitions. [collaboration](docs/design/collaboration.md) |
 | **Geometric world model** | `cpp/planning/` | Voxel-hash TSDF → tri-state occupancy → incremental ESDF at robot and responder width (0.40 m); frontiers, traversability, a structural-risk proxy. [volumetric](docs/design/volumetric.md) |
 | **Explore and allocate** | `cpp/planning/mission`<br>`cpp/runtime/live/` | Next-best-view by information gain and event-triggered CBBA produce each robot's feasible candidate tasks. [mission](docs/design/mission.md) |
-| **Evidence-seeking decisions** (this fork) | `python/orchestration/`<br>`configs/llm/` | The Nemotron provider on Token Factory with its spend ledger, the hypothesis store and the deterministic verifier, exposed as MCP tools. [design](docs/design/nemotron-evidence-loop.md), [inherited chooser](docs/design/agentic.md) |
+| **Evidence-seeking decisions** | `python/orchestration/`<br>`configs/llm/` | The Nemotron provider on Token Factory with its spend ledger, the hypothesis store and the deterministic verifier, exposed as MCP tools. [design](docs/design/nemotron-evidence-loop.md), [chooser design](docs/design/agentic.md) |
 | **Validate and execute** | `cpp/runtime/tools/ariadne_live.cpp`<br>`simulator/plugins/kinematic_mover/` | C++ validates every choice; approval-gated actions wait for the operator; the mover refuses any goal outside the ESDF safety envelope. [live runtime](docs/design/live-runtime.md) |
 | **Responder egress** | `cpp/planning/route` | Responder-width lattice, multi-exit D* Lite, replanned as hazards appear. [egress](docs/design/egress.md) |
 | **Gaussian reconstruction** | `python/reconstruction/` | gsplat trains keyframe-anchored submaps on a GPU and moves each when its anchor pose is re-optimised. [reconstruction](docs/design/reconstruction.md) |
@@ -143,7 +143,7 @@ each row links to its own design document.
 
 ## Results
 
-### Nemotron evidence loop (this fork)
+### Nemotron evidence loop
 
 One 90-second run per policy on one scene (`maze_short_6`), on a CPU-only dev box at about 0.13× real time:
 [evaluation/runs/nemotron/f4_20261028T221048Z/](evaluation/runs/nemotron/f4_20261028T221048Z/). **n = 1 each: descriptive, no
@@ -164,10 +164,9 @@ ranking claim.**
 [G1](evaluation/runs/nemotron/g1_live-20261028T212942Z-2eda/) (a refutation that re-routes a robot) and
 [G2](evaluation/runs/nemotron/g2_live-20261028T214744Z-b93e/) (a risky pick the gate refused).
 
-### Inherited from Ariadne (pre-Nemotron)
+### Perception, mapping, collaboration and planning
 
-These results predate the fork. The agentic row used the earlier Amazon Bedrock chooser, **not Nemotron**
-([lineage](evaluation/runs/README.md)).
+Subsystem results from earlier development runs, with no language model in the loop.
 
 | subsystem | result | comparator |
 |---|---|---|
@@ -179,7 +178,6 @@ These results predate the fork. The agentic row used the earlier Amazon Bedrock 
 | Robust back end | **Certified globally optimal** on **7** public benchmark graphs; PCM→GNC survives up to **90 %** outliers | published (SE-Sync Table 1) · [runs](evaluation/runs/robust-backend/) |
 | Task allocation | CBBA reaches **0.994** of the exact optimum (worst 0.983) | exact oracle · [runs](evaluation/runs/planning/allocation_replay/) |
 | Egress | **12/12** responder-width routes valid against ground truth; incremental D* Lite equals a fresh search on 180 obstacle-flip rounds | ground truth · [runs](evaluation/runs/egress/) |
-| Agentic loop (Bedrock era) | 200 s, 2 robots: **80** LLM decisions, 0 answer timeouts; every decision offered an approval-gated option and **0/80** took it; the mover refused **3** unsafe goals | [run](evaluation/runs/live-agentic/final_stack_e2e/20261026T000432Z/) |
 | Reconstruction | Gaussian splat on a g4dn GPU: **2.59 M** Gaussians from 3 robots; held-out PSNR **24.36 dB** | [runs](evaluation/runs/reconstruction/) |
 | Arm64 | Native Graviton4 build passes **708/708** C++ tests | [run](evaluation/runs/arm64/20261024T100530Z-cpuarm-602802/) |
 
@@ -234,19 +232,14 @@ docker run --rm -u "$(id -u):$(id -g)" -v "$PWD":/work --env-file ~/.config/aria
 | Nebius Token Factory | every Nemotron call (hypothesis and decision tiers) |
 | AWS EC2 (spot) | simulator, estimator and GPU runs (c7i.4xlarge CPU, g4dn.xlarge GPU, c8g.4xlarge Graviton4) |
 | AWS S3 · ECR · IAM | run inputs and outputs, image registry, least-privilege runner role |
-| Amazon Bedrock | optional legacy comparator only (`providers/bedrock.py`); the pre-fork chooser |
+| Amazon Bedrock | an optional alternative provider (`providers/bedrock.py`); not used in any Nemotron result above |
 
-## Lineage
-
-This repository is a fork of Ariadne with shared git history ([D300](docs/decisions.md)). Everything below the agentic layer —
-estimation, collaboration, mapping, planning, the C++ safety gate, reconstruction — is Ariadne's. The fork adds the Nemotron
-provider, the hypothesis store, the verifier, the bench and the console's hypotheses panel. Runs under `evaluation/runs/` that
-predate the fork are Bedrock-era evidence, labelled as such in [evaluation/runs/README.md](evaluation/runs/README.md).
+## Where things are
 
 | | |
 |---|---|
 | [`docs/`](docs/README.md) | architecture, algorithms, design per subsystem, decision log, results |
-| [`docs/process/`](docs/process/PHASED_PLAN.md) | the fork's plan, register and status |
+| [`docs/process/`](docs/process/PHASED_PLAN.md) | plan, register and status for this submission |
 | [`evaluation/runs/`](evaluation/README.md) | committed evidence for every claim, by subsystem |
 | `cpp/` · `python/` · `ros2/` · `simulator/` · `configs/` · `infra/` · `tests/` | the system |
 
@@ -260,7 +253,7 @@ human authority.
 
 ## Team
 
-Suvojit Das: design, engineering, evaluation. Built on Ariadne for the Nebius × NVIDIA Global AI Hackathon (Physical AI track).
+Suvojit Das: design, engineering, evaluation. Submitted to the Nebius × NVIDIA Global AI Hackathon (Physical AI track).
 
 ## License
 
