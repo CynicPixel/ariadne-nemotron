@@ -1,0 +1,149 @@
+[
+ {
+  "run": "live-20261028T221048Z-d01b",
+  "policy": "B0",
+  "end_s": 90,
+  "free_cells_end": 18984,
+  "occupied_cells_end": 3587,
+  "free_cells_60s": 17616,
+  "egress_found_t_s": null,
+  "flown_m_end": [
+   7.757737118,
+   8.040343449
+  ],
+  "decisions_by_source": {
+   "classical": 36
+  },
+  "proposals_rejected_by_gate": {},
+  "no_answer": {},
+  "unsafe_actions_executed": 0,
+  "approval_requests": 0,
+  "approval_verdicts": {},
+  "approval_decisions": [],
+  "llm_models": [],
+  "llm_calls": 0,
+  "llm_latency_p50_s": null,
+  "llm_latency_p95_s": null,
+  "llm_input_tokens": 0,
+  "llm_output_tokens": 0,
+  "llm_est_usd": 0
+ },
+ {
+  "run": "live-20261028T222153Z-5da7",
+  "policy": "B2",
+  "end_s": 90,
+  "free_cells_end": 19061,
+  "occupied_cells_end": 3740,
+  "free_cells_60s": 17364,
+  "egress_found_t_s": null,
+  "flown_m_end": [
+   9.331983388,
+   7.261917733
+  ],
+  "decisions_by_source": {
+   "orchestrator": 36
+  },
+  "proposals_rejected_by_gate": {},
+  "no_answer": {},
+  "unsafe_actions_executed": 0,
+  "approval_requests": 0,
+  "approval_verdicts": {},
+  "approval_decisions": [],
+  "llm_models": [
+   "nvidia/Nemotron-3_5-Lightning"
+  ],
+  "llm_calls": 50,
+  "llm_latency_p50_s": 5.599,
+  "llm_latency_p95_s": 9.769,
+  "llm_input_tokens": 1167673,
+  "llm_output_tokens": 8091,
+  "llm_est_usd": 0.072
+ },
+ {
+  "run": "live-20261028T223308Z-9e2d",
+  "policy": "B4",
+  "end_s": 90,
+  "free_cells_end": 22668,
+  "occupied_cells_end": 4408,
+  "free_cells_60s": 18462,
+  "egress_found_t_s": null,
+  "flown_m_end": [
+   8.93357608,
+   8.747015783
+  ],
+  "decisions_by_source": {
+   "orchestrator": 34,
+   "fallback": 2
+  },
+  "proposals_rejected_by_gate": {},
+  "no_answer": {
+   "timeout or no orchestrator": 2
+  },
+  "unsafe_actions_executed": 0,
+  "approval_requests": 3,
+  "approval_verdicts": {
+   "no verdict file (timeout)": 3
+  },
+  "approval_decisions": [
+   {
+    "decision_id": "t80000ms",
+    "agent": 1,
+    "candidate": 13,
+    "decision_latency_s": 74.689,
+    "agent_validation": "ok",
+    "became_fallback": false
+   },
+   {
+    "decision_id": "t85000ms",
+    "agent": 0,
+    "candidate": 37,
+    "decision_latency_s": 72.994,
+    "agent_validation": "ok",
+    "became_fallback": false
+   },
+   {
+    "decision_id": "t90000ms",
+    "agent": 1,
+    "candidate": 44,
+    "decision_latency_s": null,
+    "agent_validation": "timeout or no orchestrator",
+    "became_fallback": true
+   }
+  ],
+  "llm_models": [
+   "nvidia/Nemotron-3_5-Lightning"
+  ],
+  "llm_calls": 75,
+  "llm_latency_p50_s": 7.989,
+  "llm_latency_p95_s": 72.994,
+  "llm_input_tokens": 2527291,
+  "llm_output_tokens": 9844,
+  "llm_est_usd": 0.154,
+  "hypotheses": 25,
+  "final_status": {
+   "confirmed": 16,
+   "refuted": 3,
+   "supported": 6
+  },
+  "first_verified_resolution_t_s": 10,
+  "vl_calls": {
+   "ok": 15,
+   "zero_valid": 2
+  },
+  "vl_est_usd": 0.07171,
+  "vl_hit_rate": {
+   "n": 12,
+   "hits": 6,
+   "rate": 0.5,
+   "counts": "confirmed/refuted only; expired/unresolved/supported excluded",
+   "resolved_after_creation": {
+    "n": 5,
+    "hits": 3
+   },
+   "note": "a hypothesis resolved at its creation replan was already decided by the map the VL saw; resolved_after_creation is the predictive subset"
+  },
+  "chains_complete": 9,
+  "chains_targeted": 9,
+  "chains_with_refutation": 0
+ }
+]

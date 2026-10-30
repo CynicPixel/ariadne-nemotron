@@ -1,0 +1,50 @@
+{
+ "run": "/data/code/ariadne-nemotron/build/live/runs/live-20261028T222153Z-5da7",
+ "decisions": {
+  "agent_decisions": 36,
+  "by_source": {
+   "orchestrator": 36
+  }
+ },
+ "llm": {
+  "models": [
+   "nvidia/Nemotron-3_5-Lightning"
+  ],
+  "calls": 50,
+  "latency_p50_s": 5.644500000000001,
+  "latency_max_s": 12.702,
+  "input_tokens": 1167673,
+  "output_tokens": 8091,
+  "est_usd": 0.072,
+  "errors": []
+ },
+ "hypotheses": {
+  "total": 0,
+  "created_by_source": {},
+  "vl_annotated": 0,
+  "final_status": {},
+  "first_verified_resolution_t_s": null
+ },
+ "vl": {
+  "calls": 0,
+  "by_outcome": {},
+  "est_usd": 0,
+  "hit_rate": {
+   "n": 0,
+   "hits": 0,
+   "rate": null,
+   "counts": "confirmed/refuted only; expired/unresolved/supported excluded",
+   "resolved_after_creation": {
+    "n": 0,
+    "hits": 0
+   },
+   "note": "a hypothesis resolved at its creation replan was already decided by the map the VL saw; resolved_after_creation is the predictive subset"
+  }
+ },
+ "chains": {
+  "targeted": 0,
+  "complete": 0,
+  "complete_with_refutation": 0,
+  "items": []
+ }
+}
