@@ -46,10 +46,6 @@
 Video (2:53): https://youtu.be/aoIGG4V3038. Also: [results](docs/results/index.md) · [docs map](docs/README.md) ·
 [agentic-layer design](docs/design/nemotron-evidence-loop.md)
 
-## Architecture
-
-![Ariadne architecture: per-agent SLAM, selective collaboration, robust shared map, NVIDIA Nemotron on Nebius Token Factory for evidence-seeking decisions, responder egress and reconstruction](docs/architecture/ariadne_architecture.png)
-
 ## What it does
 
 After a structural collapse, the spaces that most need searching are the ones people cannot safely enter: dark,
@@ -97,34 +93,7 @@ What the model is allowed to do, and what it is not:
 
 ## Architecture
 
-```mermaid
-flowchart LR
-  subgraph SIM["Simulated collapsed structure (Gazebo Harmonic, ROS 2 Jazzy)"]
-    W["Procedural maze<br/>stereo RGB + IMU per robot"]
-  end
-  subgraph EST["Per-robot estimation and shared map (C++17, OpenCV 5)"]
-    V["Stereo-inertial VIO<br/>windowed BA"] --> C["Selective collaboration<br/>robust pose graph"]
-    C --> M["TSDF → occupancy → ESDF<br/>robot and responder width"]
-  end
-  subgraph NB["Nebius Token Factory"]
-    D["Nemotron decision tier<br/>reasoning off"]
-    H["Nemotron 3.5 Super VL<br/>hypothesis proposer (async)"]
-  end
-  W --> V
-  M --> P["Mission planner<br/>frontiers · candidates · egress route"]
-  M -- "map render + keyframes" --> H
-  P -- "candidates" --> H
-  H -- "hypotheses (anchored to candidates)" --> S[("hypothesis store")]
-  P -. "seeding fallback" .-> S
-  M -- "observed slab" --> VF["Deterministic verifier"]
-  VF -- "status" --> S
-  P -- "candidate set" --> D
-  S -- "open hypotheses" --> D
-  D -- "assign(candidate, hypothesis_id, evidence_goal)" --> G["C++ safety gate<br/>in set · exactly once · approval"]
-  O["Operator console<br/>approvals · overrides · hypotheses"] --> G
-  G --> MV["Kinematic mover"] --> W
-  P -- "responder route" --> O
-```
+![Ariadne architecture: per-agent SLAM, selective collaboration, robust shared map, NVIDIA Nemotron on Nebius Token Factory for evidence-seeking decisions, responder egress and reconstruction](docs/architecture/ariadne_architecture.png)
 
 The full design is [`docs/architecture.md`](docs/architecture.md);
 each row links to its own design document.
