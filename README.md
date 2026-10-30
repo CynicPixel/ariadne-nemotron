@@ -41,8 +41,9 @@
 
 ## Demo
 
-<!-- TODO(FM): YouTube link (under 3:00, at least 60 s of the live application). -->
-Video: *to be linked.* Also: [results](docs/results/index.md) · [docs map](docs/README.md) ·
+[![Ariadne demo video](https://img.youtube.com/vi/aoIGG4V3038/hqdefault.jpg)](https://youtu.be/aoIGG4V3038)
+
+Video (2:53): https://youtu.be/aoIGG4V3038. Also: [results](docs/results/index.md) · [docs map](docs/README.md) ·
 [agentic-layer design](docs/design/nemotron-evidence-loop.md)
 
 ## What it does

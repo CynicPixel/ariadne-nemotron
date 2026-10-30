@@ -81,4 +81,4 @@ aliked · nvidia-nemotron · nebius-token-factory · amazon-ec2 · amazon-ecr ·
 ## Try it out
 
 - [GitHub Repo](https://github.com/CynicPixel/ariadne-nemotron)
-- Video: <!-- TODO(FM): YouTube link -->
+- [Demo video](https://youtu.be/aoIGG4V3038)
